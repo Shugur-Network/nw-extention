@@ -16,13 +16,21 @@ Production-grade Chrome extension for browsing decentralized websites over Nostr
 
 ### For Users
 
-1. Download from [Chrome Web Store](https://chrome.google.com/webstore) (coming soon)
-2. Or download the latest release ZIP from [GitHub Releases](https://github.com/Shugur-Network/nostr-web/releases)
-3. Load unpacked in Chrome: chrome://extensions → Developer mode → Load unpacked
+**Install from Store:**
+- [Chrome Web Store](https://chrome.google.com/webstore) (search for "Nostr Web") - Under Review
+
+**Or Load Manually:**
+1. Download the latest release ZIP from [GitHub Releases](https://github.com/Shugur-Network/nostr-web/releases)
+2. Extract the ZIP file
+3. Load in Chrome: `chrome://extensions` → Developer mode → Load unpacked → Select extracted folder
 
 ### For Developers
 
 ```bash
+# Clone repository
+git clone https://github.com/Shugur-Network/nostr-web.git
+cd nostr-web/extension
+
 # Install dependencies
 npm install
 
