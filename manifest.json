@@ -2,10 +2,10 @@
   "manifest_version": 3,
   "name": "Nostr Web Browser",
   "version": "0.9.6",
-  "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content. Click icon to start!",
+  "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content.",
   "author": "Nostr Web Project",
   "homepage_url": "https://github.com/Shugur-Network/nostr-web",
-  "permissions": ["offscreen", "storage", "webNavigation", "alarms", "tabs"],
+  "permissions": ["offscreen", "storage", "webNavigation", "alarms"],
   "host_permissions": ["https://dns.google/*", "https://cloudflare-dns.com/*"],
   "background": { "service_worker": "sw.js", "type": "module" },
   "action": {
