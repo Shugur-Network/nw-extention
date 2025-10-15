@@ -11,8 +11,8 @@ import {
   sanitizeHTML,
   sanitizeCSS,
   checkRateLimit,
-} from "../shared/validation.js";
-import { ValidationError } from "../shared/errors.js";
+} from "../src/shared/validation.js";
+import { ValidationError } from "../src/shared/errors.js";
 
 describe("validateAndParseURL", () => {
   it("should parse valid domain without protocol", () => {

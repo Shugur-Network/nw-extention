@@ -13,7 +13,7 @@ import {
   ValidationError,
   SRIError,
   normalizeError,
-} from "../shared/errors.js";
+} from "../src/shared/errors.js";
 
 describe("NostrWebError", () => {
   it("should create error with message and code", () => {
