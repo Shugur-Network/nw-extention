@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Nostr Web Page</title>
+    <!-- 
+      CSP allows blob: URLs for scripts and styles
+      This is necessary for rendering user content safely
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' blob:; connect-src 'self' https: wss:; font-src 'self' data: https: blob:; media-src 'self' data: https: blob:;"
+    />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: #111;
+        font: 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        overflow: auto;
+      }
+      /* Loading state */
+      .nweb-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-size: 14px;
+        color: #999;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nweb-loading">Loading...</div>
+    <script src="content.js" type="module"></script>
+  </body>
+</html>

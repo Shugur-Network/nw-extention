@@ -3,14 +3,12 @@ node_modules/
 package-lock.json
 
 # Development files
-test/
-*.test.js
+# (tests are now included in the repo)
 
-# Build scripts (keep only if needed for development)
-build-prod.js
-generate-icons.js
-generate-brand-icons.cjs
-validate.js
+# Legacy build scripts (now in scripts/)
+src/**/build-prod.js
+src/**/generate-icons.js
+src/**/generate-brand-icons.cjs
 
 # Source SVG files (generated icons are in icons/)
 icons.svg
