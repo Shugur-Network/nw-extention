@@ -25,14 +25,14 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Validate extension structure
-        run: npm run validate
-
       - name: Build Chrome extension
         run: npm run build:chrome
 
       - name: Build Firefox extension
         run: npm run build:firefox
+
+      - name: Validate extension structure
+        run: npm run validate
 
       - name: Upload Chrome build artifact
         uses: actions/upload-artifact@v4
