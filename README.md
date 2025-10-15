@@ -1,6 +1,6 @@
-# Nostr Web Browser Extension
+# Nostr Web Extension (nw-extention)
 
-Production-grade Chrome extension for browsing decentralized websites over Nostr.
+Cross-browser extension for browsing decentralized websites over Nostr (Chrome & Firefox).
 
 ## ✨ Features
 
@@ -22,32 +22,38 @@ Production-grade Chrome extension for browsing decentralized websites over Nostr
 
 **Or Load Manually:**
 
-1. Download the latest release ZIP from [GitHub Releases](https://github.com/Shugur-Network/nostr-web/releases)
-2. Extract the ZIP file
-3. Load in Chrome: `chrome://extensions` → Developer mode → Load unpacked → Select extracted folder
+1. Download the latest release ZIP from [GitHub Releases](https://github.com/Shugur-Network/nw-extention/releases)
+2. Extract the appropriate ZIP (Chrome or Firefox)
+3. **Chrome**: Load in `chrome://extensions` → Developer mode → Load unpacked → Select extracted folder
+4. **Firefox**: Navigate to `about:debugging` → This Firefox → Load Temporary Add-on → Select any file from extracted folder
 
 ### For Developers
 
 ```bash
 # Clone repository
-git clone https://github.com/Shugur-Network/nostr-web.git
-cd nostr-web/extension
+git clone https://github.com/Shugur-Network/nw-extention.git
+cd nw-extention
 
 # Install dependencies
 npm install
 
-# Generate icons (required for first-time setup)
-npm run generate:icons
+# Build both Chrome and Firefox extensions
+npm run build
+
+# Or build individually
+npm run build:chrome    # Output: dist/chrome/
+npm run build:firefox   # Output: dist/firefox/
+
+# Run tests
+npm test
 
 # Validate extension structure
 npm run validate
-
-# Load in Chrome
-# 1. Open chrome://extensions/
-# 2. Enable "Developer mode" (top-right toggle)
-# 3. Click "Load unpacked"
-# 4. Select this directory
 ```
+
+**Load in Browser:**
+- **Chrome**: Open `chrome://extensions/` → Enable Developer mode → Load unpacked → Select `dist/chrome/`
+- **Firefox**: Open `about:debugging` → This Firefox → Load Temporary Add-on → Select any file from `dist/firefox/`
 
 ## 📖 Usage
 

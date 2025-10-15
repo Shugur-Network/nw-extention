@@ -202,7 +202,7 @@ We may update this privacy policy from time to time. Changes will be reflected i
 
 **How to check for updates:**
 
-- Visit: <https://github.com/Shugur-Network/nostr-web/blob/main/PRIVACY.md>
+- Visit: <https://github.com/Shugur-Network/nw-extention/blob/main/PRIVACY.md>
 - Check the "Last Updated" date at the top
 
 ---
@@ -211,7 +211,7 @@ We may update this privacy policy from time to time. Changes will be reflected i
 
 The extension is **open source** and available for audit:
 
-- **Repository:** <https://github.com/Shugur-Network/nostr-web>
+- **Repository:** <https://github.com/Shugur-Network/nw-extention>
 - **License:** MIT License
 - **Transparency:** All code is publicly available for review
 
@@ -221,7 +221,7 @@ The extension is **open source** and available for audit:
 
 For questions, concerns, or privacy-related inquiries:
 
-- **GitHub Issues:** <https://github.com/Shugur-Network/nostr-web/issues>
+- **GitHub Issues:** <https://github.com/Shugur-Network/nw-extention/issues>
 - **Email:** privacy@shugur.net
 
 ---

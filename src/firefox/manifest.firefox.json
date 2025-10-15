@@ -4,7 +4,7 @@
   "version": "0.9.6",
   "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content.",
   "author": "Nostr Web Project",
-  "homepage_url": "https://github.com/Shugur-Network/nostr-web",
+  "homepage_url": "https://github.com/Shugur-Network/nw-extention",
   "browser_specific_settings": {
     "gecko": {
       "id": "nostr-web@shugur.com",

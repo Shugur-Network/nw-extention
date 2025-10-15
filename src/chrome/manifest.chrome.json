@@ -4,7 +4,7 @@
   "version": "0.9.6",
   "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content.",
   "author": "Nostr Web Project",
-  "homepage_url": "https://github.com/Shugur-Network/nostr-web",
+  "homepage_url": "https://github.com/Shugur-Network/nw-extention",
   "permissions": ["offscreen", "storage", "webNavigation", "alarms"],
   "host_permissions": ["https://dns.google/*", "https://cloudflare-dns.com/*"],
   "background": { "service_worker": "sw.js", "type": "module" },
