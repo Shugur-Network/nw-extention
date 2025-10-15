@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Development files
+test/
+*.test.js
+
+# Build scripts (keep only if needed for development)
+build-prod.js
+generate-icons.js
+generate-brand-icons.cjs
+validate.js
+
+# Source SVG files (generated icons are in icons/)
+icons.svg
+logo.svg
+shugur-logo-full.svg
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

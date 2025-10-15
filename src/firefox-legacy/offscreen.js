@@ -1,0 +1,818 @@
+// Enterprise-grade logging
+import { offscreenLogger as logger } from "./shared/logger.js";
+
+// Configuration constants
+const CONFIG = {
+  // Cache TTL settings
+  TTL_IMM: 7 * 24 * 3600 * 1000, // 7 days (immutable)
+  TTL_REP: 30 * 1000, // 30 seconds (page manifests - validated against site_index)
+  // NOTE: Site index (34236) is NEVER cached - always fetched fresh from relays!
+
+  // WebSocket settings
+  WS_RECONNECT_DELAY: 1500, // 1.5 seconds
+  WS_QUERY_TIMEOUT: 6000, // 6 seconds
+  WS_EOSE_WAIT_TIME: 200, // 200ms after first EOSE
+
+  // Relay connection settings
+  MAX_RELAYS: 10, // Maximum number of relays to connect to
+
+  // Security settings
+  MAX_CONTENT_SIZE: 5 * 1024 * 1024, // 5MB max content size
+
+  // Retry settings
+  MAX_RETRIES: 2, // Max retry attempts for transient failures
+  RETRY_DELAY: 1000, // Base delay between retries (ms)
+  RETRY_BACKOFF: 2, // Exponential backoff multiplier
+};
+
+// ---- Retry utility for transient failures ----
+async function withRetry(fn, operation = "operation") {
+  let lastError;
+  for (let attempt = 0; attempt <= CONFIG.MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      const isTransient =
+        e.message?.includes("timeout") ||
+        e.message?.includes("network") ||
+        e.message?.includes("connection") ||
+        e.message?.includes("ECONNRESET") ||
+        e.message?.includes("fetch failed");
+
+      // Don't retry on non-transient errors
+      if (!isTransient || attempt === CONFIG.MAX_RETRIES) {
+        throw e;
+      }
+
+      // Exponential backoff
+      const delay =
+        CONFIG.RETRY_DELAY * Math.pow(CONFIG.RETRY_BACKOFF, attempt);
+      logger.warn(`${operation} failed, retrying`, {
+        attempt: attempt + 1,
+        maxAttempts: CONFIG.MAX_RETRIES + 1,
+        delayMs: delay,
+        error: e.message,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
+// ---- tiny TTL cache with LRU eviction ----
+const cache = new Map(); // key -> { val, exp, lastAccess }
+const MAX_CACHE_SIZE = 500; // Prevent memory leaks
+
+function cget(k) {
+  const x = cache.get(k);
+  if (!x) return null;
+  if (Date.now() > x.exp) {
+    cache.delete(k);
+    return null;
+  }
+  x.lastAccess = Date.now(); // Update access time
+  return x.val;
+}
+
+function cset(k, v, ttlMs) {
+  // Evict oldest entries if cache is full
+  if (cache.size >= MAX_CACHE_SIZE) {
+    let oldest = null;
+    let oldestTime = Infinity;
+    for (const [key, entry] of cache.entries()) {
+      if (entry.lastAccess < oldestTime) {
+        oldestTime = entry.lastAccess;
+        oldest = key;
+      }
+    }
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(k, { val: v, exp: Date.now() + ttlMs, lastAccess: Date.now() });
+}
+
+// ---- helpers ----
+// Simple bech32 decoder for npub (inline implementation to avoid build complexity)
+function decodeBech32(str) {
+  const CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+  const GENERATOR = [
+    0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3,
+  ];
+
+  str = str.toLowerCase();
+  const data = [];
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charAt(i);
+    const d = CHARSET.indexOf(c);
+    if (d === -1) throw new Error("Invalid bech32 character");
+    data.push(d);
+  }
+
+  // Convert from 5-bit to 8-bit
+  let bits = 0;
+  let value = 0;
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    value = (value << 5) | data[i];
+    bits += 5;
+    while (bits >= 8) {
+      bits -= 8;
+      result.push((value >> bits) & 0xff);
+      value &= (1 << bits) - 1;
+    }
+  }
+  return result;
+}
+
+function normalizePubkey(pk) {
+  if (!pk) return null;
+
+  // Already hex format - just normalize case
+  if (/^[0-9a-f]{64}$/i.test(pk)) return pk.toLowerCase();
+
+  // Try to decode npub format (basic bech32 decode)
+  if (pk.startsWith("npub1")) {
+    try {
+      // Extract the data part after 'npub1'
+      const data = pk.slice(5, -6); // Remove 'npub1' prefix and 6-char checksum
+      const decoded = decodeBech32(data);
+      // Convert bytes to hex
+      const hex = decoded.map((b) => b.toString(16).padStart(2, "0")).join("");
+      if (hex.length === 64) {
+        return hex.toLowerCase();
+      }
+      throw new Error("Invalid npub length");
+    } catch (e) {
+      logger.warn("Failed to decode npub", { error: e.message });
+      throw new Error(
+        `Invalid npub format: ${e.message}. Please use 64-character hex pubkey instead.`
+      );
+    }
+  }
+
+  throw new Error("Pubkey must be 64-char hex or npub1... format");
+}
+
+// ---- DoH ----
+async function dohTxt(host) {
+  const ck = "txt:" + host;
+
+  // Try to fetch fresh DNS data first
+  // NOTE: DNS contains only public key and relays (static info)
+  // It does NOT contain site_index, so DNS never needs updating after initial setup
+  try {
+    return await withRetry(async () => {
+      const eps = [
+        `https://dns.google/resolve?name=_nweb.${encodeURIComponent(
+          host
+        )}&type=TXT`,
+        `https://cloudflare-dns.com/dns-query?name=_nweb.${encodeURIComponent(
+          host
+        )}&type=TXT`,
+      ];
+
+      let lastError;
+      for (const url of eps) {
+        try {
+          const res = await fetch(url, {
+            headers: { accept: "application/dns-json" },
+          });
+
+          if (!res.ok) {
+            throw new Error(
+              `DoH request failed: ${res.status} ${res.statusText}`
+            );
+          }
+
+          const j = await res.json();
+          for (const a of j.Answer || []) {
+            if (a.type === 16 && typeof a.data === "string") {
+              const txt = a.data.replace(/^"|"$/g, "").replace(/\"/g, '"');
+              const obj = JSON.parse(txt);
+              // Cache DNS record for offline fallback (long TTL since pk/relays are static)
+              cset(ck, obj, 365 * 24 * 3600 * 1000); // 1 year TTL
+              return obj;
+            }
+          }
+        } catch (e) {
+          lastError = e;
+          // Try next endpoint
+          continue;
+        }
+      }
+
+      throw (
+        lastError || new Error(`No valid _nweb TXT record found for ${host}`)
+      );
+    }, `DNS lookup for ${host}`);
+  } catch (fetchError) {
+    // Only use cached DNS record if fetch failed (offline mode)
+    const cached = cget(ck);
+    if (cached) {
+      logger.info("Using cached DNS record", { host, mode: "offline" });
+      return cached;
+    }
+    // No cache available, throw original error
+    throw fetchError;
+  }
+}
+
+// ---- Relay pool ----
+class Pool {
+  constructor(urls) {
+    this.urls = urls || [];
+    this.sockets = new Map();
+    this.listeners = new Map();
+    this.next = 0;
+    this.lastActivity = new Map(); // Track activity per relay
+    this.cleanupTimer = null;
+    this.startCleanupTimer();
+  }
+
+  startCleanupTimer() {
+    // Clean up idle connections every 5 minutes
+    this.cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [url, lastTime] of this.lastActivity.entries()) {
+        if (now - lastTime > 5 * 60 * 1000) {
+          // 5 min idle
+          this.closeRelay(url);
+        }
+      }
+    }, 60 * 1000); // Check every minute
+  }
+
+  closeRelay(url) {
+    const ws = this.sockets.get(url);
+    if (ws) {
+      ws.close();
+      this.sockets.delete(url);
+      this.lastActivity.delete(url);
+    }
+  }
+
+  close() {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    for (const ws of this.sockets.values()) {
+      ws.close();
+    }
+    this.sockets.clear();
+    this.listeners.clear();
+    this.lastActivity.clear();
+  }
+
+  connectAll() {
+    for (const u of this.urls) this.connect(u);
+  }
+  connect(url) {
+    const ws = new WebSocket(url);
+    ws.onopen = () => {};
+    ws.onclose = () =>
+      setTimeout(() => this.connect(url), CONFIG.WS_RECONNECT_DELAY);
+    ws.onerror = () => {};
+    ws.onmessage = (ev) => {
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      const [t, sub, body] = msg;
+      const h = this.listeners.get(sub);
+      if (!h) return;
+      if (t === "EVENT") h({ t, ev: body });
+      else if (t === "EOSE") h({ t });
+    };
+    this.sockets.set(url, ws);
+  }
+  query(filters, ttlKey = null, ttlMs = TTL_REP) {
+    if (ttlKey) {
+      const hit = cget(ttlKey);
+      if (hit) return Promise.resolve(hit);
+    }
+    const sub = "s" + ++this.next;
+    const req = JSON.stringify(["REQ", sub, filters]);
+    const results = [];
+    const seen = new Set(); // Dedupe by event ID
+    let eoseCount = 0;
+    const totalSockets = this.sockets.size;
+
+    // Update activity timestamp for all relays
+    const now = Date.now();
+    for (const url of this.urls) {
+      this.lastActivity.set(url, now);
+    }
+
+    return new Promise((resolve) => {
+      const handler = (m) => {
+        if (m.t === "EVENT") {
+          // Deduplicate events by ID
+          if (!seen.has(m.ev.id)) {
+            seen.add(m.ev.id);
+            results.push(m.ev);
+          }
+        }
+        if (m.t === "EOSE") {
+          eoseCount++;
+          // Resolve as soon as we get EOSE from ANY relay (don't wait for all)
+          // But wait a tiny bit more for other fast relays
+          if (eoseCount === 1) {
+            setTimeout(() => {
+              this.listeners.delete(sub);
+              // Sort by created_at DESC to get latest
+              results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+              if (ttlKey) cset(ttlKey, results, ttlMs);
+              resolve(results);
+            }, CONFIG.WS_EOSE_WAIT_TIME); // Wait configured time after first EOSE for other fast relays
+          }
+        }
+      };
+
+      this.listeners.set(sub, handler);
+
+      // Send to all ready sockets immediately, queue for connecting ones
+      for (const ws of this.sockets.values()) {
+        if (ws.readyState === 1) {
+          ws.send(req);
+        } else {
+          ws.addEventListener("open", () => ws.send(req), { once: true });
+        }
+      }
+
+      // Timeout: resolve with what we have after configured timeout
+      setTimeout(() => {
+        this.listeners.delete(sub);
+        results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        if (ttlKey) cset(ttlKey, results, ttlMs);
+        resolve(results);
+      }, CONFIG.WS_QUERY_TIMEOUT);
+    });
+  }
+}
+
+let pool = null,
+  poolKey = "";
+function ensurePool(relays) {
+  const key = (relays || []).slice().sort().join(",");
+  if (pool && poolKey === key) return pool;
+
+  // Close old pool if relays changed
+  if (pool) pool.close();
+
+  pool = new Pool(relays);
+  poolKey = key;
+
+  // Start connecting immediately (parallel connection establishment)
+  pool.connectAll();
+
+  return pool;
+}
+
+// ---- SRI ----
+async function sha256hexText(txt) {
+  const buf = new TextEncoder().encode(txt);
+  const h = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(h))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// ---- nw ops ----
+async function dnsBootstrap({ host }) {
+  const boot = await dohTxt(host);
+  if (!boot?.pk || !Array.isArray(boot.relays) || !boot.relays.length)
+    throw new Error("_nweb TXT must include pk and relays");
+  // Normalize pk to hex
+  boot.pk = normalizePubkey(boot.pk);
+  if (!boot.pk) throw new Error("Invalid pk in DNS (must be hex or npub)");
+
+  // NOTE: DNS no longer contains site_index event ID
+  // Extension always queries relays by pubkey for latest site index
+  // This allows publishers to update content without touching DNS
+
+  return boot;
+}
+
+async function fetchSiteIndex({ boot }) {
+  const p = ensurePool(boot.relays);
+
+  // ALWAYS query by author and kind (DNS no longer contains site_index)
+  // This ensures we always get the latest published version
+  // NOTE: Fetch all and sort by created_at DESC to get latest replaceable event
+  // IMPORTANT: NO CACHE (ttl=0) - always fetch fresh to detect site updates immediately!
+  const evs = await p.query(
+    { kinds: [34236], authors: [boot.pk], "#d": ["site-index"] },
+    "idx:" + boot.pk,
+    0 // Always fetch fresh - no cache!
+  );
+
+  if (!evs.length) {
+    throw new Error(
+      `Site index (kind 34236) not found for pubkey ${boot.pk.slice(
+        0,
+        8
+      )}... on relays: ${boot.relays.join(", ")}. ` +
+        `This site may not be published yet, or the relays may be offline.`
+    );
+  }
+
+  // Sort by created_at descending to get the newest version
+  evs.sort((a, b) => b.created_at - a.created_at);
+  logger.debug("Site index fetched", {
+    versions: evs.length,
+    newestCreatedAt: evs[0].created_at,
+    newestId: evs[0].id.slice(0, 8),
+  });
+
+  return evs[0];
+}
+
+function routesFromIndex(idx) {
+  const r = {};
+  for (const t of idx.tags || []) if (t[0] === "route") r[t[2]] = t[1];
+  return r;
+}
+
+async function fetchManifestForRoute({ boot, siteIndex, route }) {
+  const p = ensurePool(boot.relays);
+  const routes = routesFromIndex(siteIndex);
+
+  logger.debug("Fetching manifest for route", {
+    route,
+    availableRoutes: Object.keys(routes),
+  });
+
+  // Check if route exists in site index
+  const id = routes[route];
+
+  // If route not found, throw 404 error
+  if (!id) {
+    const availableRoutes = Object.keys(routes);
+    throw new Error(
+      `404: Page not found for route "${route}". ` +
+        `Available routes: ${
+          availableRoutes.length ? availableRoutes.join(", ") : "none"
+        }. ` +
+        `Try visiting the home page ("/") instead.`
+    );
+  }
+
+  logger.debug("Manifest ID from site index", {
+    id: id ? id.slice(0, 8) + "..." : "NONE",
+  });
+
+  if (id) {
+    const byId = await p.query({ ids: [id] }, "id:" + id, CONFIG.TTL_IMM);
+    if (byId[0]) {
+      logger.debug("Manifest fetched by ID", { id: byId[0].id.slice(0, 8) });
+      return byId[0];
+    }
+    logger.debug(
+      "Manifest ID not found in relays, falling back to d-tag query"
+    );
+  }
+
+  // Fall back to querying by d-tag
+  // NOTE: Fetch all and sort by created_at DESC to get latest replaceable event
+  logger.debug("Querying manifest by d-tag", { route });
+  const evs = await p.query(
+    { kinds: [34235], authors: [boot.pk], "#d": [route] },
+    "man:" + boot.pk + ":" + route,
+    CONFIG.TTL_REP
+  );
+
+  logger.debug("Manifests fetched from d-tag query", { count: evs.length });
+  if (evs.length > 0) {
+    // Sort by created_at descending to get the newest version
+    evs.sort((a, b) => b.created_at - a.created_at);
+    logger.trace("Manifest versions", {
+      manifests: evs.map((ev, i) => ({
+        index: i,
+        id: ev.id.slice(0, 8),
+        createdAt: ev.created_at,
+        selected: i === 0,
+      })),
+    });
+    return evs[0];
+  }
+
+  if (!evs.length) {
+    const availableRoutes = Object.keys(routes);
+    throw new Error(
+      `Page manifest (kind 34235) not found for route "${route}". ` +
+        `Available routes: ${
+          availableRoutes.length ? availableRoutes.join(", ") : "none"
+        }. ` +
+        `Try visiting the home page ("/") instead.`
+    );
+  }
+
+  return evs[0];
+}
+
+function extractIds(manifest) {
+  const ids = { html: null, css: [], js: [] };
+  for (const t of manifest.tags || []) {
+    if (t[0] !== "e") continue;
+    if (t[2] === "html") ids.html = t[1];
+    else if (t[2] === "css") ids.css.push(t[1]);
+    else if (t[2] === "js") ids.js.push(t[1]);
+  }
+  return ids;
+}
+
+async function fetchAssets({ boot, manifest, siteIndexId }) {
+  const p = ensurePool(boot.relays);
+  const ids = extractIds(manifest);
+
+  // DEBUG: Log what we're fetching
+  logger.debug("Fetching assets", {
+    dTag: manifest.tags.find((t) => t[0] === "d")?.[1],
+    html: ids.html ? ids.html.slice(0, 8) : "NONE",
+    cssCount: ids.css.length,
+    jsCount: ids.js.length,
+    siteIndexId: siteIndexId ? siteIndexId.slice(0, 8) : "NONE",
+  });
+
+  // Validate required HTML asset
+  if (!ids.html) {
+    throw new Error(
+      `Invalid manifest: Missing HTML asset reference (kind 40000). ` +
+        `Manifest must include at least one ["e", "<id>", "html"] tag.`
+    );
+  }
+
+  const all = [ids.html, ...ids.css, ...ids.js].filter(Boolean);
+
+  // Cache key includes site index ID for automatic invalidation on site updates
+  const cacheKey = siteIndexId
+    ? `site:${siteIndexId}:ids:${all.join(",")}`
+    : `ids:${all.join(",")}`;
+  const events = await p.query({ ids: all }, cacheKey, CONFIG.TTL_IMM);
+
+  const byId = Object.fromEntries(events.map((e) => [e.id, e]));
+
+  // DEBUG: Log what we fetched
+  logger.debug("Assets fetched", {
+    count: events.length,
+    assets: events.map((ev) => ({
+      kind:
+        ev.kind === 40000
+          ? "HTML"
+          : ev.kind === 40001
+          ? "CSS"
+          : ev.kind === 40002
+          ? "JS"
+          : "OTHER",
+      id: ev.id.slice(0, 8),
+      size: ev.content?.length || 0,
+    })),
+  });
+
+  // Verify all required assets were fetched
+  const missing = all.filter((id) => !byId[id]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Failed to fetch ${missing.length} asset(s) from relays: ${missing
+        .map((id) => id.slice(0, 8))
+        .join(", ")}... ` +
+        `Relays: ${boot.relays.join(
+          ", "
+        )}. Assets may have been deleted or relays may be offline.`
+    );
+  }
+
+  // Verify author matches for all assets (security)
+  for (const [id, ev] of Object.entries(byId)) {
+    if (ev.pubkey !== boot.pk) {
+      throw new Error(
+        `❌ Security: Asset ${id.slice(0, 8)}... has wrong author. ` +
+          `Expected: ${boot.pk.slice(0, 8)}..., Got: ${ev.pubkey.slice(
+            0,
+            8
+          )}... ` +
+          `This could indicate an attack or relay corruption.`
+      );
+    }
+  }
+
+  return { ids, byId };
+}
+
+async function verifySRI({ assets }) {
+  const SRI_TIMEOUT = 10000; // 10 seconds timeout for SRI verification
+
+  const verificationPromise = (async () => {
+    for (const id of Object.keys(assets.byId)) {
+      const ev = assets.byId[id];
+
+      // JavaScript: SRI is MANDATORY (security critical)
+      if (ev.kind === 40002) {
+        const tag = (ev.tags || []).find((t) => t[0] === "sha256");
+        if (!tag) {
+          throw new Error(
+            `❌ Security: JavaScript event ${id.slice(
+              0,
+              8
+            )}... is missing required sha256 tag. ` +
+              `All JS must have SRI hashes for security.`
+          );
+        }
+        const calc = await sha256hexText(ev.content || "");
+        if (calc !== tag[1]) {
+          throw new Error(
+            `❌ Security: JavaScript event ${id.slice(
+              0,
+              8
+            )}... has invalid sha256. ` +
+              `Expected: ${tag[1].slice(0, 16)}..., Got: ${calc.slice(
+                0,
+                16
+              )}... ` +
+              `This indicates content tampering or corruption.`
+          );
+        }
+        logger.debug("SRI verified for JS", { id: id.slice(0, 8) });
+      }
+
+      // CSS: SRI is optional but recommended
+      if (ev.kind === 40001) {
+        const tag = (ev.tags || []).find((t) => t[0] === "sha256");
+        if (tag) {
+          const calc = await sha256hexText(ev.content || "");
+          if (calc !== tag[1]) {
+            throw new Error(
+              `❌ Security: CSS event ${id.slice(
+                0,
+                8
+              )}... has invalid sha256. ` +
+                `Expected: ${tag[1].slice(0, 16)}..., Got: ${calc.slice(
+                  0,
+                  16
+                )}...`
+            );
+          }
+          logger.debug("SRI verified for CSS", { id: id.slice(0, 8) });
+        } else {
+          logger.debug("CSS has no SRI hash (optional)", {
+            id: id.slice(0, 8),
+          });
+        }
+      }
+    }
+    return true;
+  })();
+
+  // Race between verification and timeout
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(
+      () => reject(new Error("SRI verification timeout (10s exceeded)")),
+      SRI_TIMEOUT
+    )
+  );
+
+  return Promise.race([verificationPromise, timeoutPromise]);
+}
+
+function cspFromManifest(manifest) {
+  try {
+    const m = JSON.parse(manifest.content || "{}");
+    const c = m.csp;
+    if (!c) return null;
+    const map = {
+      defaultSrc: "default-src",
+      imgSrc: "img-src",
+      scriptSrc: "script-src",
+      styleSrc: "style-src",
+      connectSrc: "connect-src",
+      frameSrc: "frame-src",
+      fontSrc: "font-src",
+    };
+    const entries = Object.entries(c)
+      .filter(([, v]) => Array.isArray(v) && v.length)
+      .map(([k, v]) => `${map[k] || k} ${v.join(" ")}`);
+    return entries.length ? entries.join("; ") : null;
+  } catch {
+    return null;
+  }
+}
+
+async function assembleDocument({ manifest, assets }) {
+  const ids = assets.ids,
+    byId = assets.byId;
+  const html =
+    byId[ids.html]?.content ||
+    "<!doctype html><html><head></head><body>Empty</body></html>";
+
+  // Extract CSS and JS content separately (don't embed in HTML)
+  const cssContents = ids.css.map((id) => byId[id]?.content || "");
+  const jsContents = ids.js.map((id) => byId[id]?.content || "");
+
+  // DEBUG: Log assembled content
+  logger.debug("Document assembled", {
+    htmlSize: html.length,
+    cssFiles: cssContents.length,
+    cssTotalSize: cssContents.reduce((sum, css) => sum + css.length, 0),
+    jsFiles: jsContents.length,
+    jsTotalSize: jsContents.reduce((sum, js) => sum + js.length, 0),
+  });
+
+  // Validate total content size
+  const totalSize =
+    html.length +
+    cssContents.reduce((sum, css) => sum + css.length, 0) +
+    jsContents.reduce((sum, js) => sum + js.length, 0);
+
+  if (totalSize > CONFIG.MAX_CONTENT_SIZE) {
+    throw new Error(
+      `Assembled document exceeds maximum size: ${(
+        totalSize /
+        1024 /
+        1024
+      ).toFixed(2)}MB > ${(CONFIG.MAX_CONTENT_SIZE / 1024 / 1024).toFixed(
+        2
+      )}MB. ` +
+        `This protects against DoS attacks. Consider splitting content across multiple pages.`
+    );
+  }
+
+  // Remove original script and style tags from HTML
+  let cleanHtml = html
+    .replace(
+      /<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi,
+      ""
+    ) // Remove CSP
+    .replace(/<link[^>]*rel=["']?stylesheet["'][^>]*>/gi, "") // Remove stylesheet links
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ""); // Remove all scripts
+
+  // Return as bundle for renderer to handle
+  return {
+    html: cleanHtml,
+    css: cssContents,
+    js: jsContents,
+    manifest: manifest, // Include manifest in the bundle
+  };
+}
+
+// ---- RPC bridge ----
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.target !== "offscreen") return false; // Not for us, don't indicate async response
+
+  (async () => {
+    const { id, method, params } = msg;
+
+    try {
+      // Validate sender origin
+      if (!sender.id || sender.id !== chrome.runtime.id) {
+        throw new Error("Unauthorized sender");
+      }
+
+      // Validate message structure
+      if (!msg || typeof method !== "string" || !id) {
+        throw new Error("Invalid message format");
+      }
+
+      // Validate method name (whitelist)
+      const allowedMethods = [
+        "dnsBootstrap",
+        "fetchSiteIndex",
+        "fetchManifestForRoute",
+        "fetchAssets",
+        "verifySRI",
+        "assembleDocument",
+      ];
+      if (!allowedMethods.includes(method)) {
+        throw new Error(`Unknown method: ${method}`);
+      }
+
+      // Validate params if present
+      if (params && typeof params !== "object") {
+        throw new Error("Invalid params format");
+      }
+
+      let result;
+      if (method === "dnsBootstrap") result = await dnsBootstrap(params);
+      else if (method === "fetchSiteIndex")
+        result = await fetchSiteIndex(params);
+      else if (method === "fetchManifestForRoute")
+        result = await fetchManifestForRoute(params);
+      else if (method === "fetchAssets") result = await fetchAssets(params);
+      else if (method === "verifySRI") result = await verifySRI(params);
+      else if (method === "assembleDocument")
+        result = await assembleDocument(params);
+
+      chrome.runtime.sendMessage({ target: "sw", id, result });
+    } catch (e) {
+      chrome.runtime.sendMessage({
+        target: "sw",
+        id,
+        error: String(e?.message || e),
+      });
+    }
+  })();
+
+  return false; // We're using sendMessage, not sendResponse
+});

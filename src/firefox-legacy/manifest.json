@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Nostr Web Browser",
+  "version": "0.9.6",
+  "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content.",
+  "author": "Nostr Web Project",
+  "homepage_url": "https://github.com/Shugur-Network/nostr-web",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "nostr-web@shugur.com",
+      "strict_min_version": "112.0"
+    }
+  },
+  "permissions": ["storage", "webNavigation", "alarms", "tabs"],
+  "host_permissions": ["https://dns.google/*", "https://cloudflare-dns.com/*"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Nostr Web Browser",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "viewer.html",
+        "viewer.js",
+        "sandbox.html",
+        "sandbox.js",
+        "renderer.html",
+        "renderer.js",
+        "content.html",
+        "content.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

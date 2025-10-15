@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Nostr Web Browser</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --toolbar: #fafafa;
+        --border: #e8e8e8;
+        --text: #0a0a0a;
+        --text-secondary: #666;
+        --input-bg: #ffffff;
+        --input-border: #e0e0e0;
+        --button-hover: #f5f5f5;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: var(--toolbar);
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .logo {
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        margin-right: 4px;
+      }
+
+      .nav-group {
+        display: flex;
+        gap: 4px;
+        border-right: 1px solid var(--border);
+        padding-right: 12px;
+      }
+
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        color: var(--text);
+      }
+
+      .btn svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .btn:hover:not(:disabled) {
+        background: var(--button-hover);
+        border-color: var(--border);
+      }
+
+      .btn:active:not(:disabled) {
+        transform: scale(0.95);
+      }
+
+      .btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+
+      .url-container {
+        flex: 1;
+        display: flex;
+        gap: 8px;
+      }
+
+      .url-input {
+        flex: 1;
+        padding: 0 14px;
+        height: 36px;
+        background: var(--input-bg);
+        border: 1px solid var(--input-border);
+        border-radius: 8px;
+        outline: none;
+        font-size: 14px;
+        color: var(--text);
+        transition: all 0.15s ease;
+      }
+
+      .url-input::placeholder {
+        color: #999;
+      }
+
+      .url-input:focus {
+        border-color: var(--text);
+      }
+
+      .btn-go {
+        padding: 0 18px;
+        height: 36px;
+        background: var(--text);
+        color: var(--bg);
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        letter-spacing: -0.01em;
+      }
+
+      .btn-go:hover {
+        opacity: 0.9;
+      }
+
+      .btn-go:active {
+        transform: scale(0.97);
+      }
+
+      .status {
+        font-size: 13px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+
+      .status.loading {
+        color: #0066ff;
+      }
+
+      .status.error {
+        color: #ff3b30;
+      }
+
+      .content-wrapper {
+        height: calc(100% - 61px);
+        background: var(--bg);
+      }
+
+      .content-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .empty-state-icon {
+        width: 64px;
+        height: 64px;
+        opacity: 0.15;
+      }
+
+      .empty-state-title {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text);
+        letter-spacing: -0.01em;
+      }
+
+            .empty-state-desc {
+        color: var(--fg-secondary);
+        font-size: 14px;
+      }
+
+      .footer {
+        position: fixed;
+        bottom: 8px;
+        right: 12px;
+        font-size: 11px;
+        color: var(--fg-secondary);
+        opacity: 0.6;
+        z-index: 1000;
+      }
+
+      .footer a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .footer a:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    </style>
+  </head>
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none">
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M19 12H5m0 0l7 7m-7-7l7-7"
+        />
+      </symbol>
+      <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M5 12h14m0 0l-7-7m7 7l-7 7"
+        />
+      </symbol>
+      <symbol id="icon-reload" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M23 4v6h-6M1 20v-6h6"
+        />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+        />
+      </symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 0v20M2 12h20M12 2c2.5 0 4.5 4.5 4.5 10s-2 10-4.5 10m0-20c-2.5 0-4.5 4.5-4.5 10s2 10 4.5 10"
+        />
+      </symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+        ></path>
+        <circle
+          cx="12"
+          cy="12"
+          r="3"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        ></circle>
+      </symbol>
+    </svg>
+
+    <div class="toolbar">
+      <img src="logo.svg" alt="Nostr Web" class="logo" />
+
+      <div class="nav-group">
+        <button id="backBtn" class="btn" title="Back" disabled>
+          <svg><use href="#icon-arrow-left" /></svg>
+        </button>
+        <button id="forwardBtn" class="btn" title="Forward" disabled>
+          <svg><use href="#icon-arrow-right" /></svg>
+        </button>
+        <button id="reloadBtn" class="btn" title="Reload" disabled>
+          <svg><use href="#icon-reload" /></svg>
+        </button>
+      </div>
+
+      <div class="url-container">
+        <input
+          id="urlInput"
+          class="url-input"
+          placeholder="Enter domain (e.g., nweb.shugur.com)"
+          type="text"
+        />
+        <button id="goBtn" class="btn-go">Go</button>
+      </div>
+
+      <span id="status" class="status"></span>
+
+      <button id="settingsBtn" class="btn" title="Settings">
+        <svg><use href="#icon-settings" /></svg>
+      </button>
+    </div>
+
+    <div class="content-wrapper">
+      <div id="contentFrame" class="content-frame">
+        <div class="empty-state">
+          <svg class="empty-state-icon"><use href="#icon-globe" /></svg>
+          <div class="empty-state-title">Enter a Nostr Web domain to begin</div>
+          <div class="empty-state-desc">e.g., nweb.shugur.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="https://shugur.com" target="_blank" title="Nostr Web by Shugur">Nostr Web by Shugur</a>
+    </div>
+
+    <script src="viewer.js" type="module"></script>
+  </body>
+</html>
