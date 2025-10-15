@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Validate extension structure
+      run: npm run validate
+    
+    - name: Build Chrome extension
+      run: npm run build:chrome
+    
+    - name: Build Firefox extension
+      run: npm run build:firefox
+    
+    - name: Upload Chrome build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: chrome-extension
+        path: dist/chrome/
+        retention-days: 7
+    
+    - name: Upload Firefox build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: firefox-extension
+        path: dist/firefox/
+        retention-days: 7
+
+  release:
+    runs-on: ubuntu-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build both targets
+      run: npm run build
+    
+    - name: Create Chrome ZIP
+      run: |
+        cd dist/chrome
+        zip -r ../../nw-extention-chrome-${{ github.ref_name }}.zip .
+        cd ../..
+    
+    - name: Create Firefox ZIP
+      run: |
+        cd dist/firefox
+        zip -r ../../nw-extention-firefox-${{ github.ref_name }}.zip .
+        cd ../..
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          nw-extention-chrome-${{ github.ref_name }}.zip
+          nw-extention-firefox-${{ github.ref_name }}.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
