@@ -13,10 +13,10 @@ src/**/build-prod.js
 src/**/generate-icons.js
 src/**/generate-brand-icons.cjs
 
-# Source SVG files (generated icons are in icons/)
-icons.svg
-logo.svg
-shugur-logo-full.svg
+# Source SVG files in legacy directories (runtime SVGs are in public/)
+src/**/icons.svg
+src/**/logo.svg
+src/**/shugur-logo-full.svg
 
 # Logs
 *.log
