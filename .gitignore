@@ -2,6 +2,9 @@
 node_modules/
 package-lock.json
 
+# Build output
+dist/
+
 # Development files
 # (tests are now included in the repo)
 
