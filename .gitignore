@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Temporary reference files
+tmp/
+
 # Development files
 # (tests are now included in the repo)
 

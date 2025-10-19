@@ -102,17 +102,16 @@ export const VALIDATION = {
 };
 
 export const NOSTR = {
-  // Event kinds
-  KIND_HTML: 40000,
-  KIND_CSS: 40001,
-  KIND_JS: 40002,
-  KIND_COMPONENTS: 40003,
-  KIND_PAGE_MANIFEST: 34235,
-  KIND_SITE_INDEX: 34236,
+  // Event kinds (NIP-YY and NIP-ZZ compliant)
+  KIND_ASSET: 1125, // Regular event for all assets (HTML, CSS, JS, media, etc.)
+  KIND_PAGE_MANIFEST: 1126, // Regular event for page manifests
+  KIND_SITE_INDEX: 31126, // Addressable event for site index (content-addressed d-tag)
+  KIND_ENTRYPOINT: 11126, // Replaceable event pointing to current site index
 
   // TTLs for Nostr events
-  TTL_IMMUTABLE: 7 * 24 * 3600 * 1000, // 7 days for events by ID
-  TTL_REPLACEABLE: 60 * 1000, // 1 minute for replaceable events
+  TTL_IMMUTABLE: 7 * 24 * 3600 * 1000, // 7 days for events by ID (assets, manifests)
+  TTL_REPLACEABLE: 30 * 1000, // 30 seconds for site index
+  TTL_ENTRYPOINT: 0, // Always fetch fresh entrypoint to detect updates
 };
 
 export const STORAGE_KEYS = {

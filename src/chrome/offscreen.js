@@ -5,8 +5,8 @@ import { offscreenLogger as logger } from "./shared/logger.js";
 const CONFIG = {
   // Cache TTL settings
   TTL_IMM: 7 * 24 * 3600 * 1000, // 7 days (immutable)
-  TTL_REP: 30 * 1000, // 30 seconds (page manifests - validated against site_index)
-  // NOTE: Site index (34236) is NEVER cached - always fetched fresh from relays!
+  TTL_REP: 30 * 1000, // 30 seconds (site index - validated against entrypoint)
+  // NOTE: Entrypoint (11126) is ALWAYS fetched fresh - never cached!
 
   // WebSocket settings
   WS_RECONNECT_DELAY: 1500, // 1.5 seconds
@@ -399,19 +399,19 @@ async function dnsBootstrap({ host }) {
 async function fetchSiteIndex({ boot }) {
   const p = ensurePool(boot.relays);
 
-  // ALWAYS query by author and kind (DNS no longer contains site_index)
-  // This ensures we always get the latest published version
-  // NOTE: Fetch all and sort by created_at DESC to get latest replaceable event
-  // IMPORTANT: NO CACHE (ttl=0) - always fetch fresh to detect site updates immediately!
-  const evs = await p.query(
-    { kinds: [34236], authors: [boot.pk], "#d": ["site-index"] },
-    "idx:" + boot.pk,
-    0 // Always fetch fresh - no cache!
+  // Step 1: Fetch entrypoint (kind 11126 - replaceable event pointing to current site index)
+  // IMPORTANT: Always fetch fresh (no cache) to detect site updates immediately!
+  logger.debug("Fetching entrypoint", { pubkey: boot.pk.slice(0, 8) });
+
+  const entrypointEvs = await p.query(
+    { kinds: [11126], authors: [boot.pk], limit: 1 },
+    null, // No cache key
+    0 // TTL=0 - always fetch fresh!
   );
 
-  if (!evs.length) {
+  if (!entrypointEvs.length) {
     throw new Error(
-      `Site index (kind 34236) not found for pubkey ${boot.pk.slice(
+      `Entrypoint (kind 11126) not found for pubkey ${boot.pk.slice(
         0,
         8
       )}... on relays: ${boot.relays.join(", ")}. ` +
@@ -419,21 +419,93 @@ async function fetchSiteIndex({ boot }) {
     );
   }
 
-  // Sort by created_at descending to get the newest version
-  evs.sort((a, b) => b.created_at - a.created_at);
-  logger.debug("Site index fetched", {
-    versions: evs.length,
-    newestCreatedAt: evs[0].created_at,
-    newestId: evs[0].id.slice(0, 8),
+  // Get the latest entrypoint (replaceable event, so latest created_at wins)
+  entrypointEvs.sort((a, b) => b.created_at - a.created_at);
+  const entrypoint = entrypointEvs[0];
+
+  logger.debug("Entrypoint fetched", {
+    id: entrypoint.id.slice(0, 8),
+    createdAt: entrypoint.created_at,
   });
 
-  return evs[0];
+  // Step 2: Extract site index address from entrypoint's 'a' tag
+  // Format: ["a", "31126:<pubkey>:<d-tag-hash>", "<relay-url>"]
+  const aTag = entrypoint.tags.find((t) => t[0] === "a");
+  if (!aTag || !aTag[1]) {
+    throw new Error(
+      `Invalid entrypoint: Missing 'a' tag pointing to site index. ` +
+        `Entrypoint ${entrypoint.id.slice(0, 8)}... must include an 'a' tag.`
+    );
+  }
+
+  // Parse address coordinates: kind:pubkey:d-tag
+  const [kind, pubkey, dTag] = aTag[1].split(":");
+  if (kind !== "31126" || !dTag) {
+    throw new Error(
+      `Invalid entrypoint 'a' tag format: ${aTag[1]}. ` +
+        `Expected format: "31126:<pubkey>:<d-tag>"`
+    );
+  }
+
+  logger.debug("Site index address from entrypoint", {
+    kind,
+    dTag,
+    pubkey: pubkey.slice(0, 8),
+  });
+
+  // Step 3: Fetch site index (kind 31126 - addressable event) using the d-tag
+  // Cache with short TTL (30 seconds) - content-addressed by d-tag
+  const siteIndexEvs = await p.query(
+    { kinds: [31126], authors: [boot.pk], "#d": [dTag] },
+    `idx:${boot.pk}:${dTag}`,
+    CONFIG.TTL_REP // 30 second cache
+  );
+
+  if (!siteIndexEvs.length) {
+    throw new Error(
+      `Site index (kind 31126, d=${dTag}) not found for pubkey ${boot.pk.slice(
+        0,
+        8
+      )}... on relays: ${boot.relays.join(", ")}. ` +
+        `Entrypoint points to this site index, but it was not found.`
+    );
+  }
+
+  // Sort by created_at descending (should only be one, but be defensive)
+  siteIndexEvs.sort((a, b) => b.created_at - a.created_at);
+  const siteIndex = siteIndexEvs[0];
+
+  logger.debug("Site index fetched", {
+    id: siteIndex.id.slice(0, 8),
+    dTag,
+    createdAt: siteIndex.created_at,
+  });
+
+  return siteIndex;
 }
 
 function routesFromIndex(idx) {
-  const r = {};
-  for (const t of idx.tags || []) if (t[0] === "route") r[t[2]] = t[1];
-  return r;
+  // Parse site index content (NIP-YY format)
+  // Content is JSON with structure: { routes: {...}, version: "X.Y.Z", defaultRoute: "/", notFoundRoute: "/404" }
+  const content = JSON.parse(idx.content || "{}");
+
+  // Validate content structure
+  if (!content.routes || typeof content.routes !== "object") {
+    throw new Error(
+      "Site index content missing 'routes' field. " +
+        "Site must be published with NIP-YY compliant publisher."
+    );
+  }
+
+  logger.debug("Site index content parsed", {
+    routeCount: Object.keys(content.routes).length,
+    version: content.version || "unknown",
+    defaultRoute: content.defaultRoute || "/",
+    notFoundRoute: content.notFoundRoute || null,
+  });
+
+  // Return routes object directly (maps route paths to manifest event IDs)
+  return content.routes;
 }
 
 async function fetchManifestForRoute({ boot, siteIndex, route }) {
@@ -445,11 +517,11 @@ async function fetchManifestForRoute({ boot, siteIndex, route }) {
     availableRoutes: Object.keys(routes),
   });
 
-  // Check if route exists in site index
-  const id = routes[route];
+  // Get manifest ID for this route from site index
+  const manifestId = routes[route];
 
   // If route not found, throw 404 error
-  if (!id) {
+  if (!manifestId) {
     const availableRoutes = Object.keys(routes);
     throw new Error(
       `404: Page not found for route "${route}". ` +
@@ -461,119 +533,126 @@ async function fetchManifestForRoute({ boot, siteIndex, route }) {
   }
 
   logger.debug("Manifest ID from site index", {
-    id: id ? id.slice(0, 8) + "..." : "NONE",
+    id: manifestId.slice(0, 8) + "...",
+    route,
   });
 
-  if (id) {
-    const byId = await p.query({ ids: [id] }, "id:" + id, CONFIG.TTL_IMM);
-    if (byId[0]) {
-      logger.debug("Manifest fetched by ID", { id: byId[0].id.slice(0, 8) });
-      return byId[0];
-    }
-    logger.debug(
-      "Manifest ID not found in relays, falling back to d-tag query"
-    );
-  }
-
-  // Fall back to querying by d-tag
-  // NOTE: Fetch all and sort by created_at DESC to get latest replaceable event
-  logger.debug("Querying manifest by d-tag", { route });
-  const evs = await p.query(
-    { kinds: [34235], authors: [boot.pk], "#d": [route] },
-    "man:" + boot.pk + ":" + route,
-    CONFIG.TTL_REP
+  // Fetch manifest by ID (kind 1126 is now a REGULAR event, not addressable)
+  // Manifests are referenced by their event ID in the site index
+  const manifestEvs = await p.query(
+    { ids: [manifestId] },
+    "man:" + manifestId,
+    CONFIG.TTL_IMM // Cache with long TTL (immutable by ID)
   );
 
-  logger.debug("Manifests fetched from d-tag query", { count: evs.length });
-  if (evs.length > 0) {
-    // Sort by created_at descending to get the newest version
-    evs.sort((a, b) => b.created_at - a.created_at);
-    logger.trace("Manifest versions", {
-      manifests: evs.map((ev, i) => ({
-        index: i,
-        id: ev.id.slice(0, 8),
-        createdAt: ev.created_at,
-        selected: i === 0,
-      })),
+  if (manifestEvs.length > 0) {
+    logger.debug("Manifest fetched by ID", {
+      id: manifestEvs[0].id.slice(0, 8),
     });
-    return evs[0];
+    return manifestEvs[0];
   }
 
-  if (!evs.length) {
-    const availableRoutes = Object.keys(routes);
-    throw new Error(
-      `Page manifest (kind 34235) not found for route "${route}". ` +
-        `Available routes: ${
-          availableRoutes.length ? availableRoutes.join(", ") : "none"
-        }. ` +
-        `Try visiting the home page ("/") instead.`
-    );
-  }
-
-  return evs[0];
+  // Manifest not found
+  throw new Error(
+    `Page manifest (kind 1126, id=${manifestId.slice(
+      0,
+      8
+    )}...) not found for route "${route}". ` +
+      `The manifest referenced by site index was not found on relays. ` +
+      `Relays: ${boot.relays.join(", ")}`
+  );
 }
 
 function extractIds(manifest) {
-  const ids = { html: null, css: [], js: [] };
+  // Per NIP-YY: Page manifests now use 'e' tags with relay hints for all assets
+  // Format: ["e", "<event-id>", "<relay-url>"]
+  // Assets are identified by their event ID; MIME type is in the asset's 'm' tag
+
+  const ids = [];
+
   for (const t of manifest.tags || []) {
-    if (t[0] !== "e") continue;
-    if (t[2] === "html") ids.html = t[1];
-    else if (t[2] === "css") ids.css.push(t[1]);
-    else if (t[2] === "js") ids.js.push(t[1]);
+    if (t[0] === "e" && t[1]) {
+      ids.push(t[1]); // Collect all referenced event IDs
+    }
   }
+
+  logger.debug("Asset IDs extracted from manifest", {
+    count: ids.length,
+    ids: ids.map((id) => id.slice(0, 8) + "..."),
+  });
+
   return ids;
 }
 
 async function fetchAssets({ boot, manifest, siteIndexId }) {
   const p = ensurePool(boot.relays);
-  const ids = extractIds(manifest);
+  const assetIds = extractIds(manifest);
 
   // DEBUG: Log what we're fetching
   logger.debug("Fetching assets", {
-    dTag: manifest.tags.find((t) => t[0] === "d")?.[1],
-    html: ids.html ? ids.html.slice(0, 8) : "NONE",
-    cssCount: ids.css.length,
-    jsCount: ids.js.length,
+    assetCount: assetIds.length,
     siteIndexId: siteIndexId ? siteIndexId.slice(0, 8) : "NONE",
   });
 
-  // Validate required HTML asset
-  if (!ids.html) {
+  // Validate we have at least one asset
+  if (assetIds.length === 0) {
     throw new Error(
-      `Invalid manifest: Missing HTML asset reference (kind 40000). ` +
-        `Manifest must include at least one ["e", "<id>", "html"] tag.`
+      `Invalid manifest: No asset references found. ` +
+        `Manifest must include at least one ["e", "<id>", "<relay>"] tag.`
     );
   }
 
-  const all = [ids.html, ...ids.css, ...ids.js].filter(Boolean);
-
   // Cache key includes site index ID for automatic invalidation on site updates
   const cacheKey = siteIndexId
-    ? `site:${siteIndexId}:ids:${all.join(",")}`
-    : `ids:${all.join(",")}`;
-  const events = await p.query({ ids: all }, cacheKey, CONFIG.TTL_IMM);
+    ? `site:${siteIndexId}:assets:${assetIds.join(",")}`
+    : `assets:${assetIds.join(",")}`;
+
+  // Fetch all assets by ID (kind 1125 - all assets use same kind)
+  const events = await p.query({ ids: assetIds }, cacheKey, CONFIG.TTL_IMM);
 
   const byId = Object.fromEntries(events.map((e) => [e.id, e]));
 
+  // Categorize assets by MIME type (from 'm' tag)
+  const categorized = { html: null, css: [], js: [], other: [] };
+
+  for (const ev of events) {
+    const mimeTag = ev.tags.find((t) => t[0] === "m");
+    const mimeType = mimeTag ? mimeTag[1] : "application/octet-stream";
+
+    if (mimeType === "text/html") {
+      categorized.html = ev.id;
+    } else if (mimeType === "text/css") {
+      categorized.css.push(ev.id);
+    } else if (
+      mimeType === "application/javascript" ||
+      mimeType === "text/javascript"
+    ) {
+      categorized.js.push(ev.id);
+    } else {
+      categorized.other.push(ev.id);
+    }
+  }
+
   // DEBUG: Log what we fetched
-  logger.debug("Assets fetched", {
+  logger.debug("Assets fetched and categorized", {
     count: events.length,
-    assets: events.map((ev) => ({
-      kind:
-        ev.kind === 40000
-          ? "HTML"
-          : ev.kind === 40001
-          ? "CSS"
-          : ev.kind === 40002
-          ? "JS"
-          : "OTHER",
-      id: ev.id.slice(0, 8),
-      size: ev.content?.length || 0,
-    })),
+    html: categorized.html ? categorized.html.slice(0, 8) : "NONE",
+    cssCount: categorized.css.length,
+    jsCount: categorized.js.length,
+    otherCount: categorized.other.length,
+    assets: events.map((ev) => {
+      const mimeTag = ev.tags.find((t) => t[0] === "m");
+      return {
+        kind: ev.kind,
+        mime: mimeTag ? mimeTag[1] : "unknown",
+        id: ev.id.slice(0, 8),
+        size: ev.content?.length || 0,
+      };
+    }),
   });
 
   // Verify all required assets were fetched
-  const missing = all.filter((id) => !byId[id]);
+  const missing = assetIds.filter((id) => !byId[id]);
   if (missing.length > 0) {
     throw new Error(
       `Failed to fetch ${missing.length} asset(s) from relays: ${missing
@@ -582,6 +661,14 @@ async function fetchAssets({ boot, manifest, siteIndexId }) {
         `Relays: ${boot.relays.join(
           ", "
         )}. Assets may have been deleted or relays may be offline.`
+    );
+  }
+
+  // Validate we have HTML asset
+  if (!categorized.html) {
+    throw new Error(
+      `Invalid manifest: Missing HTML asset. ` +
+        `Manifest must reference at least one asset with MIME type 'text/html'.`
     );
   }
 
@@ -599,7 +686,8 @@ async function fetchAssets({ boot, manifest, siteIndexId }) {
     }
   }
 
-  return { ids, byId };
+  // Return both the categorized IDs and the events by ID for compatibility
+  return { ids: categorized, byId };
 }
 
 async function verifySRI({ assets }) {
@@ -609,58 +697,57 @@ async function verifySRI({ assets }) {
     for (const id of Object.keys(assets.byId)) {
       const ev = assets.byId[id];
 
-      // JavaScript: SRI is MANDATORY (security critical)
-      if (ev.kind === 40002) {
-        const tag = (ev.tags || []).find((t) => t[0] === "sha256");
-        if (!tag) {
-          throw new Error(
-            `❌ Security: JavaScript event ${id.slice(
-              0,
-              8
-            )}... is missing required sha256 tag. ` +
-              `All JS must have SRI hashes for security.`
-          );
-        }
+      // Get MIME type from 'm' tag
+      const mimeTag = ev.tags.find((t) => t[0] === "m");
+      const mimeType = mimeTag ? mimeTag[1] : "application/octet-stream";
+
+      // Get content hash from 'x' tag (per NIP-YY, all assets have 'x' tag with SHA-256 hash)
+      const xTag = ev.tags.find((t) => t[0] === "x");
+
+      // Verify content hash for all assets (required by NIP-YY)
+      if (xTag && xTag[1]) {
         const calc = await sha256hexText(ev.content || "");
-        if (calc !== tag[1]) {
+        if (calc !== xTag[1]) {
           throw new Error(
-            `❌ Security: JavaScript event ${id.slice(
+            `❌ Security: Asset ${id.slice(
               0,
               8
-            )}... has invalid sha256. ` +
-              `Expected: ${tag[1].slice(0, 16)}..., Got: ${calc.slice(
+            )}... has invalid content hash. ` +
+              `Expected: ${xTag[1].slice(0, 16)}..., Got: ${calc.slice(
                 0,
                 16
               )}... ` +
+              `MIME: ${mimeType}. ` +
               `This indicates content tampering or corruption.`
           );
         }
-        logger.debug("SRI verified for JS", { id: id.slice(0, 8) });
-      }
 
-      // CSS: SRI is optional but recommended
-      if (ev.kind === 40001) {
-        const tag = (ev.tags || []).find((t) => t[0] === "sha256");
-        if (tag) {
-          const calc = await sha256hexText(ev.content || "");
-          if (calc !== tag[1]) {
-            throw new Error(
-              `❌ Security: CSS event ${id.slice(
-                0,
-                8
-              )}... has invalid sha256. ` +
-                `Expected: ${tag[1].slice(0, 16)}..., Got: ${calc.slice(
-                  0,
-                  16
-                )}...`
-            );
-          }
-          logger.debug("SRI verified for CSS", { id: id.slice(0, 8) });
-        } else {
-          logger.debug("CSS has no SRI hash (optional)", {
+        // Log verification for JavaScript and CSS (security critical)
+        if (
+          mimeType === "application/javascript" ||
+          mimeType === "text/javascript"
+        ) {
+          logger.debug("Content hash verified for JS", {
             id: id.slice(0, 8),
+            hash: xTag[1].slice(0, 16) + "...",
+          });
+        } else if (mimeType === "text/css") {
+          logger.debug("Content hash verified for CSS", {
+            id: id.slice(0, 8),
+            hash: xTag[1].slice(0, 16) + "...",
+          });
+        } else {
+          logger.trace("Content hash verified", {
+            id: id.slice(0, 8),
+            mime: mimeType,
           });
         }
+      } else {
+        // 'x' tag is required for all assets per NIP-YY
+        logger.warn("Asset missing content hash 'x' tag", {
+          id: id.slice(0, 8),
+          mime: mimeType,
+        });
       }
     }
     return true;
