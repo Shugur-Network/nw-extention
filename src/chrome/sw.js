@@ -53,7 +53,7 @@ const CONFIG = {
   // Cache settings
   DNS_CACHE_TTL: 5 * 60 * 1000, // 5 minutes
   DNS_CACHE_MAX_SIZE: 100, // Max entries in DNS cache
-  PREFETCH_TTL: 5 * 60 * 1000, // 5 minutes
+  PREFETCH_TTL: 30 * 1000, // 30 seconds (reduced - must revalidate via entrypoint)
   PREFETCH_MAX_SIZE: 50, // Max entries in prefetch cache
   CACHE_MAX_AGE: 24 * 60 * 60 * 1000, // 24 hours
 
@@ -76,7 +76,7 @@ const CONFIG = {
   RETRY_DELAY: 1000, // 1 second
 
   // Cache names
-  CACHE_NAME: "nostr-web-v3", // Bump cache version to clear old data
+  CACHE_NAME: "nostr-web-v4", // Bumped for NIP updates (new event kinds and architecture)
 
   // Offscreen document settings
   OFFSCREEN_DOCUMENT_LIFETIME: 5 * 60 * 1000, // 5 minutes
@@ -675,11 +675,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await rpc("verifySRI", { assets });
         const doc = await rpc("assembleDocument", { manifest, assets });
 
+        // Store site index ID with doc for cache validation
+        doc._siteIndexId = siteIndex.id;
+
         // Store in prefetch cache (short-term) and offline cache (long-term)
         evictPrefetchCache(); // Evict before adding
         prefetchCache.set(cacheKey, {
           doc,
           timestamp: Date.now(),
+          _siteIndexId: siteIndex.id,
         });
         await cacheOffline(cacheKey, doc);
 
@@ -703,35 +707,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const { host, route } = msg;
         const cacheKey = `${host}${route || "/"}`;
 
-        // Try prefetch cache first for instant load
-        const prefetched = prefetchCache.get(cacheKey);
-        if (
-          prefetched &&
-          Date.now() - prefetched.timestamp < CONFIG.PREFETCH_TTL
-        ) {
-          logger.debug("Using prefetched content", { cacheKey });
-          sendResponse({ ok: true, result: { doc: prefetched.doc } });
-          return;
-        }
-
-        // Try to fetch from relays (fresh data)
+        // IMPORTANT: Always fetch boot + site index to check for updates
+        // Entrypoint (kind 11126) is ALWAYS fetched fresh (TTL=0) per NIP spec
+        // This ensures we detect site updates immediately
         let boot, siteIndex, manifest, assets, doc;
         let fetchError = null;
 
         try {
-          logger.debug("Fetching from relays", { cacheKey });
+          logger.debug("Checking for updates", { cacheKey });
           boot = await rpc("dnsBootstrap", { host });
           siteIndex = await rpc("fetchSiteIndex", { boot });
 
-          // Check if site_index has changed since last cache
-          const cached = await getOfflineCache(cacheKey);
-          const cachedSiteIndexId = cached?._siteIndexId;
+          // Check both prefetch and offline cache against current site index
+          const prefetched = prefetchCache.get(cacheKey);
+          if (
+            prefetched &&
+            prefetched._siteIndexId === siteIndex.id &&
+            Date.now() - prefetched.timestamp < CONFIG.PREFETCH_TTL
+          ) {
+            logger.info("Prefetch cache hit - validated via entrypoint", {
+              cacheKey,
+              siteIndexId: siteIndex.id.slice(0, 8),
+            });
+            sendResponse({ ok: true, result: { doc: prefetched.doc } });
+            return;
+          }
 
-          if (cached && cachedSiteIndexId === siteIndex.id) {
-            logger.info("Cache hit - site index unchanged", { cacheKey });
+          const cached = await getOfflineCache(cacheKey);
+          if (cached && cached._siteIndexId === siteIndex.id) {
+            logger.info("Offline cache hit - validated via entrypoint", {
+              cacheKey,
+              siteIndexId: siteIndex.id.slice(0, 8),
+            });
+            // Update prefetch cache with validated content
+            prefetchCache.set(cacheKey, {
+              doc: cached,
+              timestamp: Date.now(),
+              _siteIndexId: siteIndex.id,
+            });
             sendResponse({ ok: true, result: { doc: cached } });
             return;
           }
+
+          // Cache miss or stale - fetch fresh content
+          logger.debug("Cache miss or stale - fetching fresh content", {
+            cacheKey,
+            siteIndexId: siteIndex.id.slice(0, 8),
+          });
 
           manifest = await rpc("fetchManifestForRoute", {
             boot,
@@ -758,6 +780,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
           // Store site_index ID with cached doc for validation
           doc._siteIndexId = siteIndex.id;
+
+          // Update both prefetch and offline caches
+          evictPrefetchCache();
+          prefetchCache.set(cacheKey, {
+            doc,
+            timestamp: Date.now(),
+            _siteIndexId: siteIndex.id,
+          });
           await cacheOffline(cacheKey, doc);
 
           sendResponse({ ok: true, result: { doc } });
@@ -819,6 +849,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "CLEAR_CACHE") {
     (async () => {
       try {
+        logger.info("🗑️ Clearing all caches...");
+
         // Clear in-memory caches
         dnsCache.clear();
         prefetchCache.clear();
@@ -827,6 +859,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Reset global rate limit counter
         globalRateLimit.count = 0;
         globalRateLimit.windowStart = Date.now();
+
+        logger.info("✅ Cleared in-memory caches (DNS, prefetch, rate limits)");
+
+        // Clear Cache API (offline cache)
+        try {
+          const cacheNames = await caches.keys();
+          for (const name of cacheNames) {
+            if (name.startsWith("nostr-web")) {
+              await caches.delete(name);
+              logger.info(`✅ Deleted cache: ${name}`);
+            }
+          }
+        } catch (e) {
+          logger.warn("Failed to clear Cache API", { error: e.message });
+        }
+
+        // Clear offscreen cache by sending RPC
+        try {
+          await rpc("clearCache", {});
+          logger.info("✅ Cleared offscreen document cache (DNS, events)");
+        } catch (e) {
+          logger.warn("Failed to clear offscreen cache", { error: e.message });
+        }
 
         // Preserve user settings before clearing storage
         const preserveKeys = ["nweb_default_site", "nweb_log_level"];
@@ -838,12 +893,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Restore preserved settings
         if (Object.keys(preserved).length > 0) {
           await chrome.storage.local.set(preserved);
-          logger.info("User settings preserved", {
+          logger.info("✅ User settings preserved", {
             keys: Object.keys(preserved),
           });
         }
 
-        logger.info("All caches cleared");
+        logger.info("🎉 All caches cleared successfully!");
         sendResponse({ ok: true });
       } catch (e) {
         logger.error("Failed to clear cache", { error: e.message });
@@ -860,3 +915,56 @@ chrome.alarms.create("keepalive", { periodInMinutes: 4 });
 chrome.alarms.onAlarm.addListener(
   (a) => a.name === "keepalive" && ensureOffscreen()
 );
+
+// ---- Debug/Admin Functions (exposed globally for console access) ----
+globalThis.clearAllCaches = async function () {
+  logger.info("🗑️ Clearing all caches...");
+
+  // Clear in-memory caches
+  dnsCache.clear();
+  prefetchCache.clear();
+  dnsRateLimit.clear();
+
+  logger.info("✅ Cleared in-memory caches (DNS, prefetch, rate limits)");
+
+  // Clear Cache API (offline cache)
+  try {
+    const cacheNames = await caches.keys();
+    for (const name of cacheNames) {
+      if (name.startsWith("nostr-web")) {
+        await caches.delete(name);
+        logger.info(`✅ Deleted cache: ${name}`);
+      }
+    }
+  } catch (e) {
+    logger.warn("Failed to clear Cache API", { error: e.message });
+  }
+
+  // Clear offscreen cache by sending RPC
+  try {
+    await rpc("clearCache", {});
+    logger.info("✅ Cleared offscreen document cache");
+  } catch (e) {
+    logger.warn("Failed to clear offscreen cache", { error: e.message });
+  }
+
+  logger.info("🎉 All caches cleared! Try loading your site again.");
+  return "All caches cleared successfully!";
+};
+
+globalThis.showCacheStats = function () {
+  console.log("📊 Cache Statistics:");
+  console.log(`  DNS Cache: ${dnsCache.size} entries`);
+  console.log(`  Prefetch Cache: ${prefetchCache.size} entries`);
+  console.log(`  Rate Limits: ${dnsRateLimit.size} entries`);
+  console.log("\nDNS Cache entries:");
+  for (const [host, entry] of dnsCache.entries()) {
+    console.log(`  - ${host}:`, entry);
+  }
+  return "Check console for details";
+};
+
+// Log helper message on service worker start
+logger.info("🔧 Debug commands available:");
+logger.info("  clearAllCaches() - Clear all extension caches");
+logger.info("  showCacheStats() - Show cache statistics");

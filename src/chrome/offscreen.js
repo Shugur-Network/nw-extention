@@ -189,8 +189,8 @@ async function dohTxt(host) {
             if (a.type === 16 && typeof a.data === "string") {
               const txt = a.data.replace(/^"|"$/g, "").replace(/\"/g, '"');
               const obj = JSON.parse(txt);
-              // Cache DNS record for offline fallback (long TTL since pk/relays are static)
-              cset(ck, obj, 365 * 24 * 3600 * 1000); // 1 year TTL
+              // Cache DNS record for offline fallback (24h TTL - allows relay updates)
+              cset(ck, obj, 24 * 3600 * 1000); // 24 hours TTL
               return obj;
             }
           }
@@ -890,6 +890,11 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
       else if (method === "verifySRI") result = await verifySRI(params);
       else if (method === "assembleDocument")
         result = await assembleDocument(params);
+      else if (method === "clearCache") {
+        cache.clear();
+        logger.info("Offscreen cache cleared");
+        result = { cleared: true };
+      }
 
       chrome.runtime.sendMessage({ target: "sw", id, result });
     } catch (e) {
