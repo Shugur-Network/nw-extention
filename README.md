@@ -2,6 +2,12 @@
 
 Cross-browser extension for browsing decentralized websites over Nostr (Chrome & Firefox).
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/hhdngjdmlabdachflbdfapkogadodkif?label=Chrome&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif)
+[![Firefox Add-on](https://img.shields.io/amo/v/nostr-web-browser?label=Firefox&logo=firefox&logoColor=white&color=FF7139)](https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/)
+[![Chrome Users](https://img.shields.io/chrome-web-store/users/hhdngjdmlabdachflbdfapkogadodkif?label=Chrome%20Users&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif)
+[![Firefox Users](https://img.shields.io/amo/users/nostr-web-browser?label=Firefox%20Users&logo=firefox&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ## ✨ Features
 
 - 🌐 **Transparent Browsing** — Just type a URL, automatic Nostr Web detection
