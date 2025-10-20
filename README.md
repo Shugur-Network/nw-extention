@@ -26,8 +26,20 @@ Cross-browser extension for browsing decentralized websites over Nostr (Chrome &
 
 **Install from Store:**
 
-- **Chrome**: [Chrome Web Store - Nostr Web Browser](https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif)
-- **Firefox**: [Firefox Add-ons - Nostr Web Browser](https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/)
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif">
+        <img src="https://img.shields.io/badge/Chrome-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Chrome Web Store" />
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/">
+        <img src="https://img.shields.io/badge/Firefox-FF7139?style=for-the-badge&logo=firefox&logoColor=white" alt="Firefox Add-ons" />
+      </a>
+    </td>
+  </tr>
+</table>
 
 **Or Load Manually:**
 
