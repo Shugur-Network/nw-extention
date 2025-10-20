@@ -292,43 +292,163 @@ async function queryRelays(relayUrls, filter) {
 
 // ===== NOSTR EVENT FETCHING =====
 async function fetchSiteIndex(pk, relays) {
-  const ck = `idx:${pk}`;
-  // Never cache site index - always fetch fresh
+  // Step 1: Fetch entrypoint (kind 11126 - replaceable event pointing to current site index)
+  // IMPORTANT: Always fetch fresh (no cache) to detect site updates immediately!
+  logger.debug("Fetching entrypoint", { pubkey: pk.slice(0, 8) });
 
-  const filter = {
-    kinds: [34236],
+  const entrypointFilter = {
+    kinds: [11126],
     authors: [pk],
-    "#d": ["site-index"],
     limit: 1,
   };
-  const events = await queryRelays(relays, filter);
+  const entrypointEvs = await queryRelays(relays, entrypointFilter);
 
-  if (events.length === 0) throw new Error("Site index not found");
-  events.sort((a, b) => b.created_at - a.created_at);
-  return events[0];
+  if (entrypointEvs.length === 0) {
+    throw new Error(
+      `Entrypoint (kind 11126) not found for pubkey ${pk.slice(
+        0,
+        8
+      )}... on relays: ${relays.join(", ")}. ` +
+        `This site may not be published yet, or the relays may be offline.`
+    );
+  }
+
+  // Get the latest entrypoint (replaceable event, so latest created_at wins)
+  entrypointEvs.sort((a, b) => b.created_at - a.created_at);
+  const entrypoint = entrypointEvs[0];
+
+  logger.debug("Entrypoint fetched", {
+    id: entrypoint.id.slice(0, 8),
+    createdAt: entrypoint.created_at,
+  });
+
+  // Step 2: Extract site index address from entrypoint's 'a' tag
+  // Format: ["a", "31126:<pubkey>:<d-tag-hash>", "<relay-url>"]
+  const aTag = entrypoint.tags.find((t) => t[0] === "a");
+  if (!aTag || !aTag[1]) {
+    throw new Error(
+      `Invalid entrypoint: Missing 'a' tag pointing to site index. ` +
+        `Entrypoint ${entrypoint.id.slice(0, 8)}... must include an 'a' tag.`
+    );
+  }
+
+  // Parse address coordinates: kind:pubkey:d-tag
+  const [kind, pubkey, dTag] = aTag[1].split(":");
+  if (kind !== "31126" || !dTag) {
+    throw new Error(
+      `Invalid entrypoint 'a' tag format: ${aTag[1]}. ` +
+        `Expected format: "31126:<pubkey>:<d-tag>"`
+    );
+  }
+
+  logger.debug("Site index address from entrypoint", {
+    kind,
+    dTag,
+    pubkey: pubkey.slice(0, 8),
+  });
+
+  // Step 3: Fetch site index (kind 31126 - addressable event) using the d-tag
+  // Cache with short TTL (30 seconds) - content-addressed by d-tag
+  const siteIndexFilter = {
+    kinds: [31126],
+    authors: [pk],
+    "#d": [dTag],
+  };
+  const siteIndexEvs = await queryRelays(relays, siteIndexFilter);
+
+  if (siteIndexEvs.length === 0) {
+    throw new Error(
+      `Site index (kind 31126, d=${dTag}) not found for pubkey ${pk.slice(
+        0,
+        8
+      )}... on relays: ${relays.join(", ")}. ` +
+        `Entrypoint points to this site index, but it was not found.`
+    );
+  }
+
+  // Sort by created_at descending (should only be one, but be defensive)
+  siteIndexEvs.sort((a, b) => b.created_at - a.created_at);
+  const siteIndex = siteIndexEvs[0];
+
+  logger.debug("Site index fetched", {
+    id: siteIndex.id.slice(0, 8),
+    dTag,
+    createdAt: siteIndex.created_at,
+  });
+
+  return siteIndex;
 }
 
-async function fetchManifestForRoute(pk, relays, route, siteIndexId) {
-  const ck = `manifest:${pk}:${route}`;
-  const cached = cget(ck);
+async function fetchManifestForRoute(pk, relays, route, siteIndex) {
+  // Parse site index content (NIP-YY format)
+  // Content is JSON with structure: { routes: {...}, version: "X.Y.Z", defaultRoute: "/", notFoundRoute: "/404" }
+  const content = JSON.parse(siteIndex.content || "{}");
 
-  // Check if cached manifest is still valid
-  if (cached && cached._siteIndexId === siteIndexId) {
+  // Validate content structure
+  if (!content.routes || typeof content.routes !== "object") {
+    throw new Error(
+      "Site index content missing 'routes' field. " +
+        "Site must be published with NIP-YY compliant publisher."
+    );
+  }
+
+  const routes = content.routes;
+
+  logger.debug("Fetching manifest for route", {
+    route,
+    availableRoutes: Object.keys(routes),
+  });
+
+  // Get manifest ID for this route from site index
+  const manifestId = routes[route];
+
+  // If route not found, throw 404 error
+  if (!manifestId) {
+    const availableRoutes = Object.keys(routes);
+    throw new Error(
+      `404: Page not found for route "${route}". ` +
+        `Available routes: ${
+          availableRoutes.length ? availableRoutes.join(", ") : "none"
+        }. ` +
+        `Try visiting the home page ("/") instead.`
+    );
+  }
+
+  logger.debug("Manifest ID from site index", {
+    id: manifestId.slice(0, 8) + "...",
+    route,
+  });
+
+  // Fetch manifest by ID (kind 1126 is now a REGULAR event, not addressable)
+  // Manifests are referenced by their event ID in the site index
+  const ck = `man:${manifestId}`;
+  const cached = cget(ck);
+  if (cached) {
     logger.debug("Using cached manifest", { route });
     return cached;
   }
 
-  const filter = { kinds: [34235], authors: [pk], "#d": [route], limit: 1 };
+  const filter = { ids: [manifestId] };
   const events = await queryRelays(relays, filter);
 
-  if (events.length === 0)
-    throw new Error(`Page manifest not found for route: ${route}`);
-  events.sort((a, b) => b.created_at - a.created_at);
+  if (events.length > 0) {
+    const manifest = events[0];
+    logger.debug("Manifest fetched by ID", {
+      id: manifest.id.slice(0, 8),
+    });
+    cset(ck, manifest, CONFIG.TTL_IMM); // Cache with long TTL (immutable by ID)
+    return manifest;
+  }
 
-  const manifest = events[0];
-  manifest._siteIndexId = siteIndexId;
-  cset(ck, manifest, CONFIG.TTL_REP);
-  return manifest;
+  // Manifest not found
+  throw new Error(
+    `Page manifest (kind 1126, id=${manifestId.slice(
+      0,
+      8
+    )}...) not found for route "${route}". ` +
+      `The manifest referenced by site index was not found on relays. ` +
+      `Relays: ${relays.join(", ")}`
+  );
 }
 
 async function fetchAssetsByIds(ids, relays) {
@@ -348,7 +468,8 @@ async function fetchAssetsByIds(ids, relays) {
   }
 
   if (needed.length > 0) {
-    const filter = { kinds: [40000, 40001, 40002, 40003], ids: needed };
+    // Fetch all assets by ID (kind 1125 - all assets use same kind)
+    const filter = { kinds: [1125], ids: needed };
     const events = await queryRelays(relays, filter);
 
     // Cache assets (immutable, long TTL)
@@ -357,6 +478,12 @@ async function fetchAssetsByIds(ids, relays) {
       results.push(ev);
     }
   }
+
+  logger.debug("Assets fetched", {
+    count: results.length,
+    cached: ids.length - needed.length,
+    fetched: needed.length,
+  });
 
   return results;
 }
@@ -390,22 +517,22 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             pk,
             relays,
             actualRoute,
-            siteIndex.id
+            siteIndex // Pass full siteIndex object, not just ID
           );
           const manifestContent = JSON.parse(manifest.content || "{}");
 
           // Extract asset IDs from manifest
           const assetIds = [];
           for (const tag of manifest.tags || []) {
-            if (tag[0] === "e" && ["html", "css", "js"].includes(tag[2])) {
-              assetIds.push(tag[1]);
+            if (tag[0] === "e" && tag[1]) {
+              assetIds.push(tag[1]); // Collect all referenced event IDs
             }
           }
 
           // Fetch assets
           const assets = await fetchAssetsByIds(assetIds, relays);
 
-          // Organize assets by type
+          // Organize assets by MIME type (from 'm' tag)
           const doc = {
             html: "",
             css: [],
@@ -415,14 +542,18 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           };
 
           for (const asset of assets) {
-            const marker = manifest.tags.find(
-              (t) => t[0] === "e" && t[1] === asset.id
-            )?.[2];
-            if (marker === "html") {
+            // Get MIME type from 'm' tag
+            const mimeTag = asset.tags.find((t) => t[0] === "m");
+            const mimeType = mimeTag ? mimeTag[1] : "application/octet-stream";
+
+            if (mimeType === "text/html") {
               doc.html = asset.content;
-            } else if (marker === "css") {
+            } else if (mimeType === "text/css") {
               doc.css.push(asset.content);
-            } else if (marker === "js") {
+            } else if (
+              mimeType === "application/javascript" ||
+              mimeType === "text/javascript"
+            ) {
               doc.js.push(asset.content);
             }
           }
@@ -450,7 +581,7 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           params.pk,
           params.relays,
           params.route,
-          params.siteIndexId
+          params.siteIndex // Expect full siteIndex object
         );
         sendResponse({ result });
       } else if (method === "fetchAssetsByIds") {

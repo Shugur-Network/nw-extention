@@ -51,11 +51,11 @@ async function rpc(method, params) {
 // Configuration constants
 const CONFIG = {
   // Cache settings
-  DNS_CACHE_TTL: 5 * 60 * 1000, // 5 minutes
+  DNS_CACHE_TTL: 60 * 1000, // 1 minute (reasonable for development)
   DNS_CACHE_MAX_SIZE: 100, // Max entries in DNS cache
-  PREFETCH_TTL: 30 * 1000, // 30 seconds (reduced - must revalidate via entrypoint)
+  PREFETCH_TTL: 30 * 1000, // 30 seconds (validated via entrypoint)
   PREFETCH_MAX_SIZE: 50, // Max entries in prefetch cache
-  CACHE_MAX_AGE: 24 * 60 * 60 * 1000, // 24 hours
+  CACHE_MAX_AGE: 60 * 60 * 1000, // 1 hour (reasonable for development)
 
   // Rate limiting
   DNS_RATE_LIMIT_WINDOW: 60 * 1000, // 1 minute

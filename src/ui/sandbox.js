@@ -1,0 +1,68 @@
+/**
+ * Sandboxed page for rendering Nostr Web content
+ * This page is EXEMPT from extension CSP - inline scripts work!
+ *
+ * The navigation handler is injected INTO the HTML content,
+ * so it persists across document.write() calls.
+ */
+
+// Store our message handler in a closure
+const handleMessage = (event) => {
+  // Security: Validate origin is our extension
+  const extensionOrigin = chrome.runtime.getURL("");
+  const expectedOrigin = new URL(extensionOrigin).origin;
+
+  if (event.origin !== expectedOrigin) {
+    console.warn("Ignoring message from invalid origin:", event.origin);
+    return;
+  }
+
+  const { cmd, html } = event.data;
+
+  if (cmd === "render") {
+    console.log(
+      `📥 Sandbox received render command, HTML length: ${html?.length || 0}`
+    );
+
+    try {
+      // Use document.write to render HTML with full CSS/JS support
+      // The HTML includes its own navigation handler that will persist
+      document.open();
+      document.write(html);
+      document.close();
+
+      // Re-attach THIS message listener after document.write
+      window.addEventListener("message", handleMessage);
+
+      // Notify parent that rendering succeeded
+      window.parent.postMessage({ cmd: "renderSuccess" }, "*");
+    } catch (error) {
+      console.error("Render error:", error);
+
+      // Show error
+      document.body.innerHTML = `
+        <div style="padding: 40px; font-family: system-ui; color: #e45757;">
+          <h1>Render Error</h1>
+          <pre style="background: #f5f5f5; padding: 20px; border-radius: 8px; overflow: auto; color: #333;">${
+            error.stack || error
+          }</pre>
+        </div>
+      `;
+
+      // Notify parent of error
+      window.parent.postMessage(
+        {
+          cmd: "renderError",
+          error: error.message,
+        },
+        "*"
+      );
+    }
+  }
+};
+
+// Attach message listener
+window.addEventListener("message", handleMessage);
+
+// Signal ready
+window.parent.postMessage({ cmd: "sandboxReady" }, "*");

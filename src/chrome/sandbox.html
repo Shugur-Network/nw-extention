@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <title>Nostr Web Sandbox</title>
+    <!-- Permissive CSP for user content - this sandbox is isolated -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:;"
+    />
     <style>
       * {
         margin: 0;
@@ -18,19 +23,15 @@
     <script>
       /**
        * Sandboxed page for rendering Nostr Web content
-       * This page is EXEMPT from extension CSP - inline scripts work!
-       *
-       * The navigation handler is injected INTO the HTML content,
-       * so it persists across document.write() calls.
+       * Chrome sandbox pages (declared in manifest) allow inline scripts
        */
 
       // Store our message handler in a closure
       const handleMessage = (event) => {
         // Security: Validate origin is our extension
-        if (
-          !event.origin.startsWith("chrome-extension://") &&
-          !event.origin.startsWith("moz-extension://")
-        ) {
+        // Note: In Chrome's sandboxed pages, chrome.runtime is not available
+        // We validate by checking if origin matches chrome-extension:// protocol
+        if (!event.origin.startsWith("chrome-extension://")) {
           console.warn("Ignoring message from invalid origin:", event.origin);
           return;
         }
@@ -45,10 +46,27 @@
           );
 
           try {
+            // Inject permissive CSP meta tag into HTML for user content
+            // This allows inline scripts and styles in the rendered content
+            let modifiedHtml = html;
+
+            // Check if HTML has a <head> tag
+            const headMatch = modifiedHtml.match(/<head[^>]*>/i);
+            if (headMatch) {
+              // Insert CSP meta tag right after opening <head>
+              const permissiveCSP = `<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:;">`;
+              modifiedHtml = modifiedHtml.replace(
+                headMatch[0],
+                headMatch[0] + permissiveCSP
+              );
+            } else {
+              // No <head> tag, wrap content with minimal HTML structure
+              modifiedHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data: blob:;"></head><body>${modifiedHtml}</body></html>`;
+            }
+
             // Use document.write to render HTML with full CSS/JS support
-            // The HTML includes its own navigation handler that will persist
             document.open();
-            document.write(html);
+            document.write(modifiedHtml);
             document.close();
 
             // Re-attach THIS message listener after document.write

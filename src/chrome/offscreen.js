@@ -189,8 +189,8 @@ async function dohTxt(host) {
             if (a.type === 16 && typeof a.data === "string") {
               const txt = a.data.replace(/^"|"$/g, "").replace(/\"/g, '"');
               const obj = JSON.parse(txt);
-              // Cache DNS record for offline fallback (24h TTL - allows relay updates)
-              cset(ck, obj, 24 * 3600 * 1000); // 24 hours TTL
+              // Cache DNS record for offline fallback
+              cset(ck, obj, 60 * 1000); // 1 minute cache (reasonable for development)
               return obj;
             }
           }
@@ -870,6 +870,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
         "fetchAssets",
         "verifySRI",
         "assembleDocument",
+        "clearCache",
       ];
       if (!allowedMethods.includes(method)) {
         throw new Error(`Unknown method: ${method}`);

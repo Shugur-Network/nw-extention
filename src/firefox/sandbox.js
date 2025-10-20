@@ -27,7 +27,6 @@ const handleMessage = (event) => {
       // ⚠️ SECURITY NOTE: document.write() is intentional here
       // This sandbox page is isolated from the extension and can only render
       // content that has been verified (author signature + SRI) by background.js
-      // The HTML includes its own navigation handler that will persist
       document.open();
       document.write(html); // Firefox AMO Warning: This is the intended rendering method for sandboxed content
       document.close();

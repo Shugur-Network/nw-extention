@@ -82,6 +82,11 @@ function assembleHTML(bundle) {
     cssSizes: cssTexts.map((css, i) => ({ index: i, size: css.length })),
   });
 
+  // Remove all external script tags from HTML (they should be in the js[] bundle)
+  // This is necessary because sandboxed iframes without allow-same-origin cannot load external resources
+  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*><\/script>/gi, '');
+  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*>/gi, '');
+
   // Build inline CSS
   const cssInline = cssTexts
     .map((css, i) => `<style data-nweb-css="${i}">${css}</style>`)
@@ -285,8 +290,10 @@ function initSandbox() {
   sandboxFrame = document.createElement("iframe");
   sandboxFrame.id = "sandboxFrame";
   sandboxFrame.src = chrome.runtime.getURL("sandbox.html");
+  // Note: allow-same-origin is removed for security (prevents sandbox escape)
+  // The content can still communicate via postMessage
   sandboxFrame.sandbox =
-    "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";
+    "allow-scripts allow-forms allow-popups allow-modals";
   sandboxFrame.style.cssText =
     "width: 100%; height: 100%; border: none; display: block;";
 
@@ -409,7 +416,7 @@ async function loadSite(input, pushHistory = true) {
     setStatus(`✗ ${friendlyError.message}`, true);
 
     // Show error in sandbox iframe
-    if (sandboxFrame && sandboxReady) {
+    if (sandboxFrame) {
       const errorHTML = `
         <!DOCTYPE html>
         <html>
