@@ -42,17 +42,7 @@ Browse decentralized websites on Nostr - A censorship-resistant, verifiable, per
 2. **Manual Entry:** Click extension icon → Enter domain → Press Enter
 3. **Browse:** Navigate links, use back/forward, and enjoy decentralized web!
 
-## 📚 Documentation
-
-- **[Installation Guide](docs/INSTALLATION.md)** - Install from store or build from source
-- **[Usage Guide](docs/USAGE.md)** - How to browse Nostr websites
-- **[Architecture](docs/ARCHITECTURE.md)** - Technical overview and component design
-- **[Protocol Specification](docs/PROTOCOL.md)** - Nostr Web protocol (NIP-YY/ZZ)
-- **[Security Model](docs/SECURITY.md)** - Security layers and threat model
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and building
-
-## 🔒 Security
+## Security
 
 The extension implements multiple security layers:
 
@@ -60,8 +50,6 @@ The extension implements multiple security layers:
 2. **Subresource Integrity** - SHA256 verification for JavaScript
 3. **Sandboxed Rendering** - Isolated execution environment
 4. **Rate Limiting** - Protection against DoS attacks
-
-See [Security Model](docs/SECURITY.md) for details.
 
 ## 🏗️ How It Works
 
@@ -77,8 +65,6 @@ User types domain → DNS lookup → Fetch from Nostr relays → Verify integrit
 6. Verify author signatures and JavaScript integrity (SRI)
 7. Assemble HTML and render in sandboxed iframe
 
-See [Protocol Specification](docs/PROTOCOL.md) for full details.
-
 ## 🚀 Performance
 
 - **First-EOSE Strategy** - Returns after fastest relay (200-500ms typical)
@@ -86,8 +72,6 @@ See [Protocol Specification](docs/PROTOCOL.md) for full details.
 - **Smart Caching** - 7-day asset cache, 30-second manifest cache
 - **Event Deduplication** - Filters duplicates from multiple relays
 - **Parallel Fetching** - Queries all relays simultaneously
-
-See [Architecture](docs/ARCHITECTURE.md) for optimization details.
 
 ## 🛠️ Development
 
@@ -109,20 +93,10 @@ npm run validate         # Validate structure
 # Output: dist/chrome/ and dist/firefox/
 ```
 
-See [Development Guide](docs/DEVELOPMENT.md) for contributing.
-
 ## 📋 Project Structure
 
 ```
 nw-extention/
-├── docs/                     # Documentation
-│   ├── INSTALLATION.md
-│   ├── USAGE.md
-│   ├── ARCHITECTURE.md
-│   ├── PROTOCOL.md
-│   ├── SECURITY.md
-│   ├── TROUBLESHOOTING.md
-│   └── DEVELOPMENT.md
 ├── src/
 │   ├── chrome/              # Chrome-specific (service worker + offscreen)
 │   ├── firefox/             # Firefox-specific (background script)
@@ -137,11 +111,10 @@ nw-extention/
 
 Contributions welcome! Please:
 
-1. Read the [Development Guide](docs/DEVELOPMENT.md)
-2. Fork the repository
-3. Create a feature branch
-4. Add tests for new code
-5. Submit a Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new code
+4. Submit a Pull Request
 
 ## 📄 License
 
