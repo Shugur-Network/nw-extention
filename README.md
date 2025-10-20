@@ -8,17 +8,6 @@ Browse decentralized websites on Nostr - A censorship-resistant, verifiable, per
 [![Firefox Users](https://img.shields.io/amo/users/nostr-web-browser?label=Firefox%20Users&logo=firefox&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## ✨ Features
-
-- 🌐 **Transparent Browsing** — Just type a URL, automatic Nostr Web detection
-- ⚡ **Fast Loading** — Parallel relay fetching with smart caching and connection pooling
-- 🔒 **Secure** — Author verification, SHA256 integrity, sandboxed rendering
-- 💾 **Smart Caching** — DNS offline-only, entrypoint always fresh, manifests cached
-- 📡 **Multi-Relay** — Fetches from multiple relays for redundancy with automatic failover
-- 🚀 **Performance** — First-EOSE optimization, WebSocket connection pooling, event deduplication
-- 🦊 **Full Firefox Support** — Auto-reconnect, persistent connections, same features as Chrome
-- 🎨 **Beautiful UI** — Modern interface with loading states and animations
-
 ## 🚀 Quick Start
 
 <table>
@@ -132,4 +121,3 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 - **Issues:** [GitHub Issues](https://github.com/Shugur-Network/nw-extention/issues)
 - **Email:** support@shugur.com
-- **Nostr:** npub1arxyhhak4zlhjyav60s5vd9hahptq5jh070j8n0yxv6keuv53k6q05g4z8
