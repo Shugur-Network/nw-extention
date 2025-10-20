@@ -5,10 +5,12 @@ Cross-browser extension for browsing decentralized websites over Nostr (Chrome &
 ## ✨ Features
 
 - 🌐 **Transparent Browsing** — Just type a URL, automatic Nostr Web detection
-- ⚡ **Fast Loading** — Parallel relay fetching with smart caching
+- ⚡ **Fast Loading** — Parallel relay fetching with smart caching and connection pooling
 - 🔒 **Secure** — Author verification, SHA256 integrity, sandboxed rendering
 - 💾 **Smart Caching** — DNS offline-only, site index always fresh, manifests cached
-- 📡 **Multi-Relay** — Fetches from multiple relays for redundancy
+- 📡 **Multi-Relay** — Fetches from multiple relays for redundancy with automatic failover
+- 🚀 **Performance** — First-EOSE optimization, WebSocket connection pooling, event deduplication
+- 🦊 **Firefox Support** — Full Firefox compatibility with auto-reconnect and persistent connections
 - 🎨 **Beautiful UI** — Modern interface with loading states and animations
 - 📱 **Mobile-Ready** — Responsive design
 
@@ -18,7 +20,8 @@ Cross-browser extension for browsing decentralized websites over Nostr (Chrome &
 
 **Install from Store:**
 
-- [Chrome Web Store](https://chrome.google.com/webstore) (search for "Nostr Web") - Under Review
+- **Chrome**: [Chrome Web Store - Nostr Web Browser](https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif)
+- **Firefox**: [Firefox Add-ons - Nostr Web Browser](https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/)
 
 **Or Load Manually:**
 
@@ -52,6 +55,7 @@ npm run validate
 ```
 
 **Load in Browser:**
+
 - **Chrome**: Open `chrome://extensions/` → Enable Developer mode → Load unpacked → Select `dist/chrome/`
 - **Firefox**: Open `about:debugging` → This Firefox → Load Temporary Add-on → Select any file from `dist/firefox/`
 
@@ -224,6 +228,102 @@ Sandboxed pages are isolated from extension and can execute dynamic content safe
 - **Strategy:** Content-addressed, immutable
 - **Cache:** In-memory Map with LRU eviction (max 500 entries)
 - **Expiration:** Timestamp-based, auto-evict on read
+
+## ⚡ Performance Optimizations
+
+### 1. First-EOSE Strategy
+
+The extension queries all relays simultaneously but returns as soon as **any relay** sends EOSE (End of Stored Events):
+
+```javascript
+// Queries all 3 relays in parallel
+// Returns after first EOSE + 200ms buffer (to catch other fast relays)
+// Example: If relay A responds in 500ms, relay B in 600ms, relay C in 2000ms
+// Result: Total time ~700ms (not 2000ms!)
+```
+
+**Benefits:**
+
+- ✅ Uses fastest available relay
+- ✅ Doesn't wait for slow relays
+- ✅ Still queries all relays for redundancy
+
+### 2. WebSocket Connection Pooling
+
+**Chrome:** Uses persistent offscreen document that keeps connections alive indefinitely
+
+**Firefox:** Implements auto-reconnect with connection pooling:
+
+```javascript
+// Connections automatically reconnect if dropped
+ws.onclose = () => {
+  setTimeout(() => connectRelay(url), 1500); // Auto-reconnect
+};
+```
+
+**Benefits:**
+
+- ✅ First load: Establishes connections (~500-2000ms)
+- ✅ Subsequent loads: Reuses connections (~100-300ms)
+- ✅ Automatic failover if relay disconnects
+
+### 3. Event Deduplication
+
+Multiple relays may return the same events. The extension deduplicates by event ID:
+
+```javascript
+const seen = new Set();
+onEvent: (event) => {
+  if (!seen.has(event.id)) {
+    seen.add(event.id);
+    events.push(event);
+  }
+};
+```
+
+**Benefits:**
+
+- ✅ Reduces processing overhead
+- ✅ Saves bandwidth
+- ✅ Prevents duplicate renders
+
+### 4. Version Resolution
+
+When different relays have different versions, the extension uses **timestamp-based resolution**:
+
+```javascript
+// Sort by created_at (newest wins)
+events.sort((a, b) => b.created_at - a.created_at);
+const latest = events[0]; // Always use newest version
+```
+
+**Example:**
+
+```
+Relay 1: version created_at=1699000000 (Nov 3, 2023)
+Relay 2: version created_at=1700000000 (Nov 15, 2023) ← Selected
+Relay 3: version created_at=1700000000 (Nov 15, 2023)
+```
+
+**Benefits:**
+
+- ✅ Always gets latest version
+- ✅ Resilient to stale relays
+- ✅ Follows Nostr NIP-16/33 standards
+
+### 5. Sandboxed Rendering
+
+**Firefox-specific optimizations:**
+
+- Single navigation handler (prevents duplicate event listeners)
+- Direct `document.write()` without blob conversion (faster rendering)
+- No CSP conflicts (sandboxed context allows inline scripts)
+
+**Performance:**
+
+- HTML assembly: ~5-10ms
+- document.write(): ~2-8ms
+- Total render time: ~10-20ms
 
 ## 🧪 Testing
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nostr Web Browser",
-  "version": "0.9.6",
+  "version": "1.0.0",
   "description": "Browse decentralized websites on Nostr. Censorship-resistant, verifiable, permanent web content.",
   "author": "Nostr Web Project",
   "homepage_url": "https://github.com/Shugur-Network/nw-extention",

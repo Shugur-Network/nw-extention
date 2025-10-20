@@ -1,6 +1,6 @@
 {
   "name": "nw-extention",
-  "version": "0.9.6",
+  "version": "1.0.0",
   "description": "Cross-browser extension for browsing decentralized websites on Nostr (Chrome & Firefox)",
   "type": "module",
   "author": "Nostr Web Project",
