@@ -461,18 +461,18 @@ Assets (kind 1125, fetched by ID) → HTML, CSS, JS, images, fonts, etc.
 ### Event Structure Examples
 
 **Entrypoint Event (kind 11126):**
+
 ```json
 {
   "kind": 11126,
   "pubkey": "5e56a...",
   "content": "<site-index-event-id>",
-  "tags": [
-    ["d", "<domain>"]
-  ]
+  "tags": [["d", "<domain>"]]
 }
 ```
 
 **Site Index Event (kind 31126):**
+
 ```json
 {
   "kind": 31126,
@@ -488,6 +488,7 @@ Assets (kind 1125, fetched by ID) → HTML, CSS, JS, images, fonts, etc.
 ```
 
 **Page Manifest Event (kind 1126):**
+
 ```json
 {
   "kind": 1126,
@@ -504,6 +505,7 @@ Assets (kind 1125, fetched by ID) → HTML, CSS, JS, images, fonts, etc.
 ```
 
 **Asset Event (kind 1125):**
+
 ```json
 {
   "kind": 1125,
