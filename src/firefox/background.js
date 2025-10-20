@@ -211,7 +211,17 @@ function connectRelay(relayUrl) {
     messageQueue: [],
   };
 
+  // Set a connection timeout - if relay doesn't connect within 3 seconds, mark it as slow
+  const connectionTimeout = setTimeout(() => {
+    if (!state.ready) {
+      logger.warn("Relay connection timeout", { relay: relayUrl });
+      // Don't close the connection, but mark it as slow
+      state.slow = true;
+    }
+  }, 3000); // 3 second timeout
+
   ws.onopen = () => {
+    clearTimeout(connectionTimeout);
     state.ready = true;
     logger.debug("Relay connected", { relay: relayUrl });
     while (state.messageQueue.length > 0) {
@@ -232,10 +242,21 @@ function connectRelay(relayUrl) {
     }
   };
 
-  ws.onerror = () => logger.warn("Relay error", { relay: relayUrl });
+  ws.onerror = () => {
+    clearTimeout(connectionTimeout);
+    logger.warn("Relay error", { relay: relayUrl });
+  };
+
   ws.onclose = () => {
+    clearTimeout(connectionTimeout);
     logger.debug("Relay disconnected", { relay: relayUrl });
     activeSockets.delete(relayUrl);
+
+    // Auto-reconnect after delay (like Chrome does)
+    setTimeout(() => {
+      logger.debug("Auto-reconnecting to relay", { relay: relayUrl });
+      connectRelay(relayUrl);
+    }, CONFIG.WS_RECONNECT_DELAY);
   };
 
   activeSockets.set(relayUrl, state);
@@ -245,6 +266,7 @@ function connectRelay(relayUrl) {
 async function queryRelays(relayUrls, filter) {
   const subId = Math.random().toString(36).slice(2);
   const events = [];
+  const seen = new Set(); // Deduplicate events by ID (like Chrome)
   let eoseCount = 0;
 
   return new Promise((resolve) => {
@@ -265,14 +287,22 @@ async function queryRelays(relayUrls, filter) {
     };
 
     const subscription = {
-      onEvent: (event) => events.push(event),
+      onEvent: (event) => {
+        // Deduplicate events by ID (same as Chrome)
+        if (!seen.has(event.id)) {
+          seen.add(event.id);
+          events.push(event);
+        }
+      },
       onEOSE: () => {
         eoseCount++;
-        if (eoseCount >= relayUrls.length) {
+        // OPTIMIZATION: Resolve as soon as we get EOSE from ANY relay (don't wait for all)
+        // Wait a tiny bit more for other fast relays to respond
+        if (eoseCount === 1) {
           setTimeout(() => {
             cleanup();
             resolve(events);
-          }, CONFIG.WS_EOSE_WAIT_TIME);
+          }, CONFIG.WS_EOSE_WAIT_TIME); // 200ms after first EOSE
         }
       },
     };
@@ -495,11 +525,19 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Handle high-level commands (from viewer.js)
       if (msg?.cmd === "nw.load") {
         const { host, route } = msg;
+        const loadStartTime = performance.now();
         logger.info("Loading site", { host, route });
 
         try {
           // DNS bootstrap
+          const dnsStartTime = performance.now();
           const dnsRecord = await dohTxt(host);
+          logger.info(
+            `⏱️ DNS lookup took ${(performance.now() - dnsStartTime).toFixed(
+              2
+            )}ms`
+          );
+
           if (!dnsRecord || !dnsRecord.pk) {
             throw new Error("No Nostr Web DNS record found");
           }
@@ -508,10 +546,18 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const relays = dnsRecord.relays || [];
 
           // Fetch site index
+          const siteIndexStartTime = performance.now();
           const siteIndex = await fetchSiteIndex(pk, relays);
+          logger.info(
+            `⏱️ Site index fetch took ${(
+              performance.now() - siteIndexStartTime
+            ).toFixed(2)}ms`
+          );
+
           const siteIndexContent = JSON.parse(siteIndex.content || "{}");
 
           // Fetch manifest for route
+          const manifestStartTime = performance.now();
           const actualRoute = route || "/";
           const manifest = await fetchManifestForRoute(
             pk,
@@ -519,6 +565,12 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             actualRoute,
             siteIndex // Pass full siteIndex object, not just ID
           );
+          logger.info(
+            `⏱️ Manifest fetch took ${(
+              performance.now() - manifestStartTime
+            ).toFixed(2)}ms`
+          );
+
           const manifestContent = JSON.parse(manifest.content || "{}");
 
           // Extract asset IDs from manifest
@@ -530,9 +582,16 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
 
           // Fetch assets
+          const assetsStartTime = performance.now();
           const assets = await fetchAssetsByIds(assetIds, relays);
+          logger.info(
+            `⏱️ Assets fetch took ${(
+              performance.now() - assetsStartTime
+            ).toFixed(2)}ms`
+          );
 
           // Organize assets by MIME type (from 'm' tag)
+          const orgStartTime = performance.now();
           const doc = {
             html: "",
             css: [],
@@ -557,8 +616,18 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               doc.js.push(asset.content);
             }
           }
+          logger.info(
+            `⏱️ Asset organization took ${(
+              performance.now() - orgStartTime
+            ).toFixed(2)}ms`
+          );
 
-          logger.info("Site loaded successfully", { host, route });
+          const totalLoadTime = performance.now() - loadStartTime;
+          logger.info(
+            `✅ Site loaded successfully in ${totalLoadTime.toFixed(2)}ms`,
+            { host, route }
+          );
+
           sendResponse({ ok: true, result: { doc } });
         } catch (e) {
           logger.error("Failed to load site", { error: e.message });

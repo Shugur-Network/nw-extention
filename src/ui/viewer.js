@@ -69,6 +69,8 @@ window.addEventListener("message", (event) => {
  * @returns {string} Complete HTML document
  */
 function assembleHTML(bundle) {
+  const startTime = performance.now();
+
   let html =
     bundle.html || "<!DOCTYPE html><html><head></head><body></body></html>";
   const cssTexts = Array.isArray(bundle.css) ? bundle.css : [];
@@ -84,8 +86,15 @@ function assembleHTML(bundle) {
 
   // Remove all external script tags from HTML (they should be in the js[] bundle)
   // This is necessary because sandboxed iframes without allow-same-origin cannot load external resources
-  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*><\/script>/gi, "");
-  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*>/gi, "");
+  // Optimize: Use a single regex that matches both self-closing and paired tags
+  const scriptRemovalStart = performance.now();
+  html = html.replace(
+    /<script[^>]*\ssrc=["'][^"']*["'][^>]*>(?:<\/script>)?/gi,
+    ""
+  );
+  logger.debug(
+    `Script removal took ${performance.now() - scriptRemovalStart}ms`
+  );
 
   // Build inline CSS
   const cssInline = cssTexts
@@ -98,6 +107,7 @@ function assembleHTML(bundle) {
     .join("\n");
 
   // Add navigation handler that will persist after document.write
+  // Note: Firefox's sandbox.js will detect and skip if this already exists
   const navHandler = `
     <script data-nweb-nav>
     (function() {
@@ -138,7 +148,8 @@ function assembleHTML(bundle) {
         window.parent.postMessage({ cmd: "navigate", route: route }, "*");
       }, true);
       
-      // Navigation handler loaded
+      // Navigation handler loaded - set flag for Firefox sandbox
+      window._nwebNavHandlerLoaded = true;
     })();
     </script>
   `;
@@ -156,6 +167,9 @@ function assembleHTML(bundle) {
   } else if (html.includes("<body>")) {
     html = html.replace("<body>", `<body>\n${jsInline}\n${navHandler}`);
   }
+
+  const totalTime = performance.now() - startTime;
+  logger.debug(`assembleHTML completed in ${totalTime.toFixed(2)}ms`);
 
   return html;
 }

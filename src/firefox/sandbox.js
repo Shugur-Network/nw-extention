@@ -24,6 +24,8 @@ const handleMessage = (event) => {
     );
 
     try {
+      const startTime = performance.now();
+
       // ⚠️ SECURITY NOTE: document.write() is intentional here
       // This sandbox page is isolated from the extension and can only render
       // content that has been verified (author signature + SRI) by background.js
@@ -31,14 +33,21 @@ const handleMessage = (event) => {
       document.write(html); // Firefox AMO Warning: This is the intended rendering method for sandboxed content
       document.close();
 
+      const writeTime = performance.now() - startTime;
+      console.log(`⏱️ document.write() took ${writeTime.toFixed(2)}ms`);
+
       // Re-attach THIS message listener after document.write
       window.addEventListener("message", handleMessage);
 
-      // Now attach the navigation handler to the NEW document
-      attachNavigationHandler();
+      // DON'T attach navigation handler here - it's already in the HTML
+      // The assembleHTML() function injects it, and document.write() includes it
+      // Attaching it again would create duplicates
 
       // Notify parent that rendering succeeded
       window.parent.postMessage({ cmd: "renderSuccess" }, "*");
+
+      const totalTime = performance.now() - startTime;
+      console.log(`✅ Total render time: ${totalTime.toFixed(2)}ms`);
     } catch (error) {
       console.error("Render error:", error);
 
@@ -67,55 +76,70 @@ const handleMessage = (event) => {
 };
 
 // Navigation handler - attaches to document AFTER render
+// Store handler reference to prevent duplicates
+let navigationHandlerAttached = false;
+const navigationClickHandler = (e) => {
+  const link = e.target.closest("a");
+  if (!link) return;
+
+  const href = link.getAttribute("href");
+  if (!href) return;
+
+  console.log("[Nostr Web] Link clicked:", href);
+
+  // Allow external links and anchors
+  if (
+    href.startsWith("http://") ||
+    href.startsWith("https://") ||
+    href.startsWith("mailto:") ||
+    href.startsWith("tel:") ||
+    href.startsWith("#")
+  ) {
+    console.log("[Nostr Web] External/anchor link, allowing");
+    return;
+  }
+
+  // Internal link - prevent navigation and notify parent
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Extract route
+  let route = href;
+  if (route.endsWith(".html")) {
+    route = route.replace(/\.html$/, "");
+  }
+  if (!route.startsWith("/")) {
+    route = "/" + route;
+  }
+  if (route === "/index") {
+    route = "/";
+  }
+
+  console.log("[Nostr Web] Internal navigation to:", route);
+
+  // Notify parent viewer to load the new route
+  window.parent.postMessage({ cmd: "navigate", route: route }, "*");
+};
+
 function attachNavigationHandler() {
+  // Check if navigation handler was already loaded via injected HTML script
+  if (window._nwebNavHandlerLoaded) {
+    console.log(
+      "[Nostr Web] Navigation handler already loaded in HTML, skipping"
+    );
+    return;
+  }
+
+  // Prevent attaching multiple times
+  if (navigationHandlerAttached) {
+    console.log("[Nostr Web] Navigation handler already attached, skipping");
+    return;
+  }
+
   console.log("[Nostr Web] Attaching navigation handler...");
 
-  document.addEventListener(
-    "click",
-    (e) => {
-      const link = e.target.closest("a");
-      if (!link) return;
-
-      const href = link.getAttribute("href");
-      if (!href) return;
-
-      console.log("[Nostr Web] Link clicked:", href);
-
-      // Allow external links and anchors
-      if (
-        href.startsWith("http://") ||
-        href.startsWith("https://") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:") ||
-        href.startsWith("#")
-      ) {
-        console.log("[Nostr Web] External/anchor link, allowing");
-        return;
-      }
-
-      // Internal link - prevent navigation and notify parent
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Extract route
-      let route = href;
-      if (route.endsWith(".html")) {
-        route = route.replace(/\.html$/, "");
-      }
-      if (!route.startsWith("/")) {
-        route = "/" + route;
-      }
-      if (route === "/index") {
-        route = "/";
-      }
-
-      console.log("[Nostr Web] Internal navigation to:", route);
-
-      // Notify parent viewer to load the new route
-      window.parent.postMessage({ cmd: "navigate", route: route }, "*");
-    },
-    true
-  ); // Use capture phase
+  document.addEventListener("click", navigationClickHandler, true);
+  navigationHandlerAttached = true;
 
   console.log("[Nostr Web] Navigation handler attached");
 }
