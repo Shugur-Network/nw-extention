@@ -213,27 +213,36 @@ Sandboxed pages are isolated from extension and can execute dynamic content safe
 - **Fallback:** Use cache only when offline (network error)
 - **Rationale:** Detect DNS changes immediately (pubkey rotation, relay updates)
 
-### Site Index (kind 34236)
+### Entrypoint (kind 11126)
 
 - **TTL:** 0 seconds (always fresh)
 - **Strategy:** Always query relays, never cache
-- **Rationale:** Must detect site updates immediately
+- **Rationale:** Must detect site updates immediately (points to current site index)
 - **Performance:** ~200-500ms per query (acceptable for transparency)
 
-### Page Manifests (kind 34235)
+### Site Index (kind 31126)
 
 - **TTL:** 30 seconds
-- **Strategy:** Fetch fresh, compare site_index ID with cached version
-- **Cache Hit:** Use cached page if site_index unchanged
+- **Strategy:** Fetch by ID from entrypoint, cache temporarily
+- **Cache Hit:** Use cached if entrypoint still points to same ID
 - **Fallback:** Use cache if relays offline
-- **Validation:** Stored with `_siteIndexId` field for validation
+- **Validation:** Content-addressed by d-tag (content hash)
 
-### Assets (kinds 40000-40003)
+### Page Manifests (kind 1126)
+
+- **TTL:** 30 seconds
+- **Strategy:** Fetch by ID, cache temporarily
+- **Cache Hit:** Use cached if site index still references same manifest ID
+- **Fallback:** Use cache if relays offline
+- **Validation:** Fetched by event ID from site index
+
+### Assets (kind 1125)
 
 - **TTL:** 7 days
-- **Strategy:** Content-addressed, immutable
+- **Strategy:** Content-addressed by event ID, immutable
 - **Cache:** In-memory Map with LRU eviction (max 500 entries)
 - **Expiration:** Timestamp-based, auto-evict on read
+- **Types:** HTML, CSS, JavaScript, images, fonts, videos, etc.
 
 ## ⚡ Performance Optimizations
 
@@ -361,9 +370,10 @@ npm test
 
 ```bash
 npm test                # Run all tests
+npm run build           # Build both Chrome and Firefox extensions
+npm run build:chrome    # Build Chrome extension only
+npm run build:firefox   # Build Firefox extension only
 npm run validate        # Validate extension structure
-npm run generate:icons  # Generate placeholder icons (16/48/128px)
-npm run build:prod      # Build production ZIP for Chrome Web Store
 ```
 
 ### Debugging
@@ -401,17 +411,18 @@ The extension implements **Nostr Web (NIP-YY)** protocol:
 
 ### Event Kinds
 
-**Immutable Assets (Content-Addressed):**
+**Regular Events (Content-Addressed by ID):**
 
-- **40000** — HTML content
-- **40001** — CSS stylesheets
-- **40002** — JavaScript (requires SHA256 tag)
-- **40003** — Components (reusable HTML fragments)
+- **1125** — Asset events (HTML, CSS, JavaScript, media files, etc.)
+- **1126** — Page Manifest (defines page structure and references assets by ID)
 
-**Replaceable Metadata (Addressable):**
+**Addressable Events (Content-Addressed by d-tag):**
 
-- **34235** — Page Manifest (per route via `["d", "/<route>"]`)
-- **34236** — Site Index (singleton via `["d", "site-index"]`)
+- **31126** — Site Index (addressable by content hash in d-tag, lists all page manifests)
+
+**Replaceable Events (Always Fetch Latest):**
+
+- **11126** — Entrypoint (points to current site index event ID, always fetch fresh)
 
 ### DNS Bootstrap
 
@@ -433,20 +444,76 @@ DNS TXT record at `_nweb.<host>` contains JSON:
 - `pk` — Public key (hex format, 64 chars)
 - `relays` — Array of WebSocket relay URLs
 
-**Optional Fields:**
-
-- `blossom` — Array of Blossom media server URLs (for images, videos, fonts)
-
 ### Data Flow
 
 ```
-DNS TXT (_nweb.example.com)
+DNS TXT (_nweb.example.com) → Returns pubkey + relay list
     ↓
-Site Index (kind 34236, d="site-index")
+Entrypoint (kind 11126) → Always fetched fresh, points to current site index ID
     ↓
-Page Manifest (kind 34235, d="/path")
+Site Index (kind 31126, d=<content-hash>) → Fetched by ID, lists all page manifests
     ↓
-Assets (kinds 40000-40003)
+Page Manifest (kind 1126, fetched by ID) → Defines page structure, references assets
+    ↓
+Assets (kind 1125, fetched by ID) → HTML, CSS, JS, images, fonts, etc.
+```
+
+### Event Structure Examples
+
+**Entrypoint Event (kind 11126):**
+```json
+{
+  "kind": 11126,
+  "pubkey": "5e56a...",
+  "content": "<site-index-event-id>",
+  "tags": [
+    ["d", "<domain>"]
+  ]
+}
+```
+
+**Site Index Event (kind 31126):**
+```json
+{
+  "kind": 31126,
+  "pubkey": "5e56a...",
+  "content": "",
+  "tags": [
+    ["d", "<content-hash-of-manifest-list>"],
+    ["m", "<manifest-id-1>", "/"],
+    ["m", "<manifest-id-2>", "/about"],
+    ["m", "<manifest-id-3>", "/contact"]
+  ]
+}
+```
+
+**Page Manifest Event (kind 1126):**
+```json
+{
+  "kind": 1126,
+  "pubkey": "5e56a...",
+  "content": "",
+  "tags": [
+    ["a", "<html-asset-id>", "text/html"],
+    ["a", "<css-asset-id>", "text/css"],
+    ["a", "<js-asset-id>", "application/javascript"],
+    ["title", "Page Title"],
+    ["description", "Page description"]
+  ]
+}
+```
+
+**Asset Event (kind 1125):**
+```json
+{
+  "kind": 1125,
+  "pubkey": "5e56a...",
+  "content": "<actual-content-base64-or-text>",
+  "tags": [
+    ["mime", "text/html"],
+    ["sha256", "<content-hash>"]
+  ]
+}
 ```
 
 ## 🚨 Troubleshooting
@@ -509,8 +576,9 @@ Before deploying to Chrome Web Store:
 - [ ] Security audit (author verification, CSP, rate limiting)
 - [ ] Performance testing (first load, cached load, navigation)
 - [ ] Capture screenshots (1280×800 for Chrome Web Store)
-- [ ] Package with `npm run build:prod` script
-- [ ] Submit to Chrome Web Store
+- [ ] Build extensions with `npm run build`
+- [ ] Create distribution ZIPs (see packaging instructions below)
+- [ ] Submit to Chrome Web Store and Firefox Add-ons
 
 ## 📄 File Structure
 
