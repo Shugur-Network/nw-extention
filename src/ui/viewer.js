@@ -84,8 +84,8 @@ function assembleHTML(bundle) {
 
   // Remove all external script tags from HTML (they should be in the js[] bundle)
   // This is necessary because sandboxed iframes without allow-same-origin cannot load external resources
-  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*><\/script>/gi, '');
-  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*>/gi, '');
+  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*><\/script>/gi, "");
+  html = html.replace(/<script[^>]*\ssrc=["'][^"']*["'][^>]*>/gi, "");
 
   // Build inline CSS
   const cssInline = cssTexts
@@ -292,8 +292,7 @@ function initSandbox() {
   sandboxFrame.src = chrome.runtime.getURL("sandbox.html");
   // Note: allow-same-origin is removed for security (prevents sandbox escape)
   // The content can still communicate via postMessage
-  sandboxFrame.sandbox =
-    "allow-scripts allow-forms allow-popups allow-modals";
+  sandboxFrame.sandbox = "allow-scripts allow-forms allow-popups allow-modals";
   sandboxFrame.style.cssText =
     "width: 100%; height: 100%; border: none; display: block;";
 
