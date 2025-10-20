@@ -51,6 +51,7 @@ Use the extension popup for direct access:
 4. Page loads in the Nostr Web viewer
 
 **Benefits:**
+
 - Access sites without typing in address bar
 - Works even if you can't intercept navigation
 - Useful for bookmarking or quick access
@@ -60,21 +61,25 @@ Use the extension popup for direct access:
 Once a site is loaded:
 
 ### Address Bar
+
 - Type a new domain or path to navigate
 - Press Enter or click the Go button
 - Use `/path` for same-domain navigation (e.g., `/about`)
 
 ### Back/Forward Buttons
+
 - Click ← to go back in history
 - Click → to go forward
 - History is maintained within the viewer session
 
 ### Links
+
 - Click any link on the page to navigate
 - External links (non-Nostr) open in a new tab
 - Internal links navigate within the viewer
 
 ### Refresh
+
 - Click the refresh button (🔄) to reload the current page
 - Useful after clearing cache or if content seems stale
 
@@ -92,6 +97,7 @@ Set a site to load automatically when you first open the viewer:
 4. Leave blank for no default site
 
 **Use cases:**
+
 - Set your personal homepage
 - Quick access to frequently visited sites
 - Testing during development
@@ -107,6 +113,7 @@ Remove all cached data to force fresh content:
 5. Your settings are preserved
 
 **When to clear cache:**
+
 - Site content appears outdated
 - After a site update is published
 - Troubleshooting loading issues
@@ -117,11 +124,13 @@ Remove all cached data to force fresh content:
 ### Performance
 
 **First Load:**
+
 - May take 2-5 seconds depending on relay speed
 - Extension establishes WebSocket connections
 - Fetches site index and page manifest
 
 **Subsequent Loads:**
+
 - Much faster (100-300ms) thanks to connection pooling
 - Cached content loads instantly
 - Only checks for updates, doesn't re-download

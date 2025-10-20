@@ -9,11 +9,13 @@
 **Possible Causes:**
 
 1. **DNS TXT record missing**
+
    - Check: `dig TXT _nweb.yourdomain.com`
    - Should return JSON with `pk` and `relays`
    - Wait 5-30 minutes after DNS changes for propagation
 
 2. **DNS TXT record malformed**
+
    - Must be valid JSON
    - Must have `pk` field (64-char hex)
    - Must have `relays` array with at least one URL
@@ -35,6 +37,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 ```
 
 **Manual Workaround:**
+
 1. Click extension icon
 2. Enter domain manually
 3. Click "Open"
@@ -48,11 +51,13 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Slow relays**
+
    - Relay response time >2 seconds
    - Network congestion
    - Geographic distance
 
 2. **Missing events**
+
    - Entrypoint not published
    - Site index not found
    - Page manifest missing
@@ -66,20 +71,23 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Check relay response times:**
+
    ```javascript
    // In service worker console (chrome://extensions)
-   import { swLogger } from './shared/logger.js';
-   swLogger.setLevel('debug');
+   import { swLogger } from "./shared/logger.js";
+   swLogger.setLevel("debug");
    // Watch for relay response times in logs
    ```
 
 2. **Verify all events published:**
+
    - Use Nostr client (e.g., nos2x) to search for events
    - Check entrypoint (kind 11126) exists
    - Verify site index (kind 31126) is reachable
    - Confirm all assets (kind 1125) are published
 
 3. **Clear cache and retry:**
+
    - Click ⚙️ in viewer
    - Click "Clear Cache"
    - Reload page
@@ -97,15 +105,18 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Missing SHA256 hash**
+
    - JavaScript assets (kind 1125) must have `sha256` tag
    - Extension rejects JS without integrity hash
 
 2. **SHA256 mismatch**
+
    - Computed hash doesn't match tag
    - Content was modified
    - Encoding issue (check base64)
 
 3. **Wrong author**
+
    - Event pubkey doesn't match DNS
    - Unauthorized publisher
    - DNS record outdated
@@ -118,6 +129,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Check browser console (F12):**
+
    ```
    Look for errors like:
    - "SRI verification failed"
@@ -126,6 +138,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
    ```
 
 2. **Verify event structure:**
+
    ```json
    {
      "kind": 1125,
@@ -138,6 +151,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
    ```
 
 3. **Recompute hash:**
+
    ```bash
    echo -n "alert('test');" | sha256sum
    ```
@@ -155,10 +169,12 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Browser cache**
+
    - Extension cached old events
    - TTL not expired (30 seconds for manifests, 7 days for assets)
 
 2. **Entrypoint not updated**
+
    - Still points to old site index
    - Forgot to update kind 11126 event
 
@@ -169,11 +185,13 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Clear extension cache:**
+
    - Click ⚙️ icon in viewer
    - Click "Clear Cache"
    - Refresh page
 
 2. **Verify entrypoint:**
+
    ```javascript
    // Query for entrypoint
    {
@@ -185,6 +203,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
    ```
 
 3. **Wait for relay sync:**
+
    - Give relays 1-5 minutes to sync
    - Query each relay individually
    - Republish if missing
@@ -204,10 +223,12 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Page manifest doesn't exist**
+
    - Route not configured in site index
    - Missing kind 1126 event
 
 2. **Wrong route in site index**
+
    - Typo in `m` tag
    - Case sensitivity issue
    - Missing leading slash
@@ -219,6 +240,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Check site index structure:**
+
    ```json
    {
      "kind": 31126,
@@ -230,11 +252,13 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
    ```
 
 2. **Verify route matches:**
+
    - Routes are case-sensitive
    - Must start with `/`
    - No trailing slash (except root)
 
 3. **Query relay directly:**
+
    ```bash
    # Use websocat or similar
    websocat wss://relay.com
@@ -255,11 +279,13 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Relay is down**
+
    - Temporary outage
    - Maintenance
    - Permanent shutdown
 
 2. **Firewall blocking**
+
    - Corporate firewall
    - VPN restrictions
    - Browser security settings
@@ -272,23 +298,26 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Test relay manually:**
+
    ```bash
    # Install websocat
    brew install websocat  # macOS
-   
+
    # Connect to relay
    websocat wss://relay.example.com
-   
+
    # Should see connection open
    # Send test: ["REQ","test",{"kinds":[1],"limit":1}]
    ```
 
 2. **Check relay list:**
+
    - Verify DNS TXT record
    - Ensure at least one relay is working
    - Add backup relays
 
 3. **Try different network:**
+
    - Disable VPN
    - Try mobile hotspot
    - Test from different location
@@ -307,6 +336,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Possible Causes:**
 
 1. **Browser storage locked**
+
    - Extension updated while running
    - Browser bug
    - Storage quota exceeded
@@ -318,15 +348,18 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Reload extension:**
+
    - Chrome: `chrome://extensions/` → Click reload icon
    - Firefox: `about:debugging` → Reload
 
 2. **Clear browser data:**
+
    - Chrome: Settings → Privacy → Clear browsing data
    - Firefox: Settings → Privacy → Clear Data
    - Select "Cached files" only
 
 3. **Reinstall extension:**
+
    - Remove extension
    - Close browser
    - Reinstall from store
@@ -334,8 +367,8 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 4. **Check storage quota:**
    ```javascript
    // In extension console
-   chrome.storage.local.getBytesInUse(null, bytes => {
-     console.log('Storage used:', bytes);
+   chrome.storage.local.getBytesInUse(null, (bytes) => {
+     console.log("Storage used:", bytes);
    });
    ```
 
@@ -348,10 +381,12 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Pin extension:**
+
    - Chrome: Click puzzle piece icon → Pin extension
    - Firefox: Right-click toolbar → Customize → Drag icon
 
 2. **Extension not installed:**
+
    - Check extensions page
    - Reinstall if missing
 
@@ -375,6 +410,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 **Solutions:**
 
 1. **Enter domain only:**
+
    ```
    ❌ https://example.com
    ❌ example.com/path
@@ -382,6 +418,7 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
    ```
 
 2. **Check for hidden characters:**
+
    - Copy-paste may include extra spaces
    - Type manually
 
@@ -398,22 +435,25 @@ https://dns.google/query?name=_nweb.example.com&type=TXT
 ### Enable Debug Logging
 
 **Service Worker:**
+
 ```javascript
 // Open service worker console: chrome://extensions → Inspect service worker
-import { swLogger } from './shared/logger.js';
-swLogger.setLevel('debug');  // Shows all debug messages
+import { swLogger } from "./shared/logger.js";
+swLogger.setLevel("debug"); // Shows all debug messages
 ```
 
 **Viewer Page:**
+
 ```javascript
 // Open viewer page console: Right-click viewer → Inspect
-import { uiLogger } from './shared/logger.js';
-uiLogger.setLevel('debug');
+import { uiLogger } from "./shared/logger.js";
+uiLogger.setLevel("debug");
 ```
 
 ### Inspect Network Traffic
 
 **Chrome DevTools:**
+
 1. Open viewer page
 2. F12 → Network tab
 3. Filter: WS (WebSocket)
@@ -423,8 +463,8 @@ uiLogger.setLevel('debug');
 
 ```javascript
 // In extension console
-chrome.storage.local.get(null, data => {
-  console.log('All stored data:', data);
+chrome.storage.local.get(null, (data) => {
+  console.log("All stored data:", data);
 });
 ```
 
@@ -432,9 +472,7 @@ chrome.storage.local.get(null, data => {
 
 ```javascript
 // In offscreen document console
-performance.getEntriesByType('measure').filter(m => 
-  m.name.includes('relay')
-);
+performance.getEntriesByType("measure").filter((m) => m.name.includes("relay"));
 ```
 
 ---
@@ -444,11 +482,13 @@ performance.getEntriesByType('measure').filter(m =>
 If you're still stuck:
 
 1. **Check GitHub Issues:**
+
    - https://github.com/Shugur-Network/nw-extention/issues
    - Search for similar problems
    - Check closed issues too
 
 2. **Open New Issue:**
+
    - Include browser version
    - Include extension version
    - Describe steps to reproduce
@@ -456,6 +496,7 @@ If you're still stuck:
    - Include relevant DNS/relay info
 
 3. **Community Support:**
+
    - Nostr: npub1arxyhhak4zlhjyav60s5vd9hahptq5jh070j8n0yxv6keuv53k6q05g4z8
    - Email: support@shugur.com
 
@@ -474,6 +515,7 @@ If you're still stuck:
 ### Firefox-Specific
 
 1. **Temporary add-ons removed on restart**
+
    - Expected behavior for manually loaded extensions
    - Install from AMO for permanent installation
 
@@ -490,6 +532,7 @@ If you're still stuck:
 ### Both Browsers
 
 1. **Large sites (>1MB) load slowly**
+
    - Network bandwidth limited
    - Consider using Blossom for large media
 
@@ -502,16 +545,19 @@ If you're still stuck:
 ## Performance Tips
 
 1. **Use fast relays:**
+
    - Test relay latency
    - Use geographically close relays
    - Run your own relay for best performance
 
 2. **Optimize assets:**
+
    - Minimize JavaScript
    - Compress images
    - Use modern formats (WebP, AVIF)
 
 3. **Limit asset count:**
+
    - Fewer events = faster loading
    - Bundle JavaScript when possible
    - Inline small CSS/JS

@@ -28,12 +28,14 @@ npm run build
 ### Loading the Extension
 
 **Chrome:**
+
 1. Open `chrome://extensions/`
 2. Enable "Developer mode" (toggle in top-right)
 3. Click "Load unpacked"
 4. Select `dist/chrome/` directory
 
 **Firefox:**
+
 1. Open `about:debugging`
 2. Click "This Firefox"
 3. Click "Load Temporary Add-on"
@@ -117,16 +119,19 @@ npm run build
 ### 3. Reload Extension
 
 **Chrome:**
+
 - Go to `chrome://extensions/`
 - Click reload icon on your extension card
 
 **Firefox:**
+
 - Go to `about:debugging`
 - Click "Reload" next to your extension
 
 ### 4. Test
 
 Manual testing:
+
 ```bash
 # Load a test site
 1. Click extension icon
@@ -135,6 +140,7 @@ Manual testing:
 ```
 
 Automated testing:
+
 ```bash
 npm test
 ```
@@ -142,24 +148,28 @@ npm test
 ### 5. Debug
 
 **Service Worker (Chrome):**
+
 ```
 chrome://extensions/ → Details → Service worker → Inspect
 ```
 
 **Background Script (Firefox):**
+
 ```
 about:debugging → Inspect
 ```
 
 **Viewer Page:**
+
 ```
 Right-click page → Inspect
 ```
 
 Enable debug logging:
+
 ```javascript
-import { swLogger } from './shared/logger.js';
-swLogger.setLevel('debug');
+import { swLogger } from "./shared/logger.js";
+swLogger.setLevel("debug");
 ```
 
 ## Testing
@@ -181,11 +191,11 @@ node --test --watch
 
 ```javascript
 // test/example.test.js
-import { test } from 'node:test';
-import assert from 'node:assert';
+import { test } from "node:test";
+import assert from "node:assert";
 
-test('validates domain format', () => {
-  const result = validateDomain('example.com');
+test("validates domain format", () => {
+  const result = validateDomain("example.com");
   assert.strictEqual(result, true);
 });
 ```
@@ -198,25 +208,27 @@ test('validates domain format', () => {
 4. **Run** with `npm test`
 
 Example:
-```javascript
-import { test } from 'node:test';
-import assert from 'node:assert';
-import { validateDomain } from '../src/shared/validation.js';
 
-test('accepts valid domains', () => {
-  assert.strictEqual(validateDomain('example.com'), true);
-  assert.strictEqual(validateDomain('sub.example.com'), true);
+```javascript
+import { test } from "node:test";
+import assert from "node:assert";
+import { validateDomain } from "../src/shared/validation.js";
+
+test("accepts valid domains", () => {
+  assert.strictEqual(validateDomain("example.com"), true);
+  assert.strictEqual(validateDomain("sub.example.com"), true);
 });
 
-test('rejects invalid domains', () => {
-  assert.throws(() => validateDomain(''), /Invalid domain/);
-  assert.throws(() => validateDomain('exam ple.com'), /Invalid domain/);
+test("rejects invalid domains", () => {
+  assert.throws(() => validateDomain(""), /Invalid domain/);
+  assert.throws(() => validateDomain("exam ple.com"), /Invalid domain/);
 });
 ```
 
 ### Test Coverage
 
 Current coverage:
+
 - ✅ Input validation
 - ✅ Error handling
 - ✅ Rate limiting
@@ -230,30 +242,32 @@ Current coverage:
 
 ```javascript
 // Import logger
-import { swLogger } from './shared/logger.js';
+import { swLogger } from "./shared/logger.js";
 
 // Log at different levels
-swLogger.error('Critical error');
-swLogger.warn('Warning message');
-swLogger.info('Informational');
-swLogger.debug('Debug details');
-swLogger.trace('Verbose trace');
+swLogger.error("Critical error");
+swLogger.warn("Warning message");
+swLogger.info("Informational");
+swLogger.debug("Debug details");
+swLogger.trace("Verbose trace");
 
 // Change log level dynamically
-swLogger.setLevel('debug');  // Shows debug and above
+swLogger.setLevel("debug"); // Shows debug and above
 ```
 
 ### Network Inspection
 
 **WebSocket Messages:**
+
 ```javascript
 // In offscreen.js or background.js
-ws.addEventListener('message', (event) => {
-  console.log('Relay message:', event.data);
+ws.addEventListener("message", (event) => {
+  console.log("Relay message:", event.data);
 });
 ```
 
 **Chrome DevTools:**
+
 1. Open DevTools on viewer page
 2. Network tab → WS filter
 3. See all WebSocket traffic
@@ -263,11 +277,11 @@ ws.addEventListener('message', (event) => {
 ```javascript
 // View all stored data
 chrome.storage.local.get(null, (data) => {
-  console.log('Storage:', data);
+  console.log("Storage:", data);
 });
 
 // Clear specific key
-chrome.storage.local.remove('dns:example.com');
+chrome.storage.local.remove("dns:example.com");
 
 // Clear all
 chrome.storage.local.clear();
@@ -277,13 +291,13 @@ chrome.storage.local.clear();
 
 ```javascript
 // Measure operation time
-performance.mark('start-fetch');
+performance.mark("start-fetch");
 await fetchSomeData();
-performance.mark('end-fetch');
-performance.measure('fetch-duration', 'start-fetch', 'end-fetch');
+performance.mark("end-fetch");
+performance.measure("fetch-duration", "start-fetch", "end-fetch");
 
 // View measurements
-performance.getEntriesByType('measure');
+performance.getEntriesByType("measure");
 ```
 
 ## Code Style
@@ -294,8 +308,8 @@ Follow standard JavaScript conventions:
 
 ```javascript
 // Use const/let, not var
-const CONSTANT = 'value';
-let mutable = 'value';
+const CONSTANT = "value";
+let mutable = "value";
 
 // Use arrow functions
 const add = (a, b) => a + b;
@@ -352,18 +366,21 @@ All cross-context communication uses message passing:
 
 ```javascript
 // Sending a message
-chrome.runtime.sendMessage({
-  type: 'nw.load',
-  payload: { domain: 'example.com' }
-}, (response) => {
-  console.log('Response:', response);
-});
+chrome.runtime.sendMessage(
+  {
+    type: "nw.load",
+    payload: { domain: "example.com" },
+  },
+  (response) => {
+    console.log("Response:", response);
+  }
+);
 
 // Receiving messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'nw.load') {
+  if (message.type === "nw.load") {
     handleLoad(message.payload).then(sendResponse);
-    return true;  // Keep channel open for async response
+    return true; // Keep channel open for async response
   }
 });
 ```
@@ -373,7 +390,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 Use custom error classes:
 
 ```javascript
-import { DNSError, RelayError } from './shared/errors.js';
+import { DNSError, RelayError } from "./shared/errors.js";
 
 try {
   const dns = await lookupDNS(domain);
@@ -391,11 +408,11 @@ try {
 Use appropriate log levels:
 
 ```javascript
-logger.error('Critical failure');      // Always shown
-logger.warn('Potential issue');        // Production
-logger.info('Normal operation');       // Production
-logger.debug('Detailed debugging');    // Development
-logger.trace('Very verbose');          // Troubleshooting
+logger.error("Critical failure"); // Always shown
+logger.warn("Potential issue"); // Production
+logger.info("Normal operation"); // Production
+logger.debug("Detailed debugging"); // Development
+logger.trace("Very verbose"); // Troubleshooting
 ```
 
 ## Adding Features
@@ -403,6 +420,7 @@ logger.trace('Very verbose');          // Troubleshooting
 ### Example: New Cache Strategy
 
 1. **Update constants:**
+
 ```javascript
 // src/shared/constants.js
 export const CONFIG = {
@@ -412,6 +430,7 @@ export const CONFIG = {
 ```
 
 2. **Implement logic:**
+
 ```javascript
 // src/chrome/offscreen.js
 async function fetchWithCache(key, fetcher) {
@@ -419,7 +438,7 @@ async function fetchWithCache(key, fetcher) {
   if (cached && !isExpired(cached, CONFIG.NEW_CACHE_TTL)) {
     return cached.data;
   }
-  
+
   const data = await fetcher();
   await setCache(key, data);
   return data;
@@ -427,37 +446,44 @@ async function fetchWithCache(key, fetcher) {
 ```
 
 3. **Add tests:**
+
 ```javascript
 // test/cache.test.js
-test('caches data for configured TTL', async () => {
+test("caches data for configured TTL", async () => {
   // Test implementation
 });
 ```
 
 4. **Update docs:**
+
 ```markdown
 <!-- docs/ARCHITECTURE.md -->
+
 ### New Cache Strategy
+
 ...
 ```
 
 ### Example: New UI Feature
 
 1. **Add HTML:**
+
 ```html
 <!-- src/ui/viewer.html -->
 <button id="new-feature-btn">New Feature</button>
 ```
 
 2. **Add JavaScript:**
+
 ```javascript
 // src/ui/viewer.js
-document.getElementById('new-feature-btn').addEventListener('click', () => {
+document.getElementById("new-feature-btn").addEventListener("click", () => {
   // Feature implementation
 });
 ```
 
 3. **Add styles:**
+
 ```css
 /* src/ui/viewer.html <style> */
 #new-feature-btn {
@@ -467,6 +493,7 @@ document.getElementById('new-feature-btn').addEventListener('click', () => {
 ```
 
 4. **Test manually:**
+
 - Rebuild: `npm run build`
 - Reload extension
 - Verify feature works
@@ -542,11 +569,13 @@ git push origin v1.0.1
 ### 7. Submit to Stores
 
 **Chrome Web Store:**
+
 1. https://chrome.google.com/webstore/devconsole
 2. Upload `nostr-web-browser-chrome-1.0.1.zip`
 3. Wait for review (~1-3 days)
 
 **Firefox Add-ons:**
+
 1. https://addons.mozilla.org/developers/
 2. Upload `nostr-web-browser-firefox-1.0.1.zip`
 3. Wait for review (~1-7 days)
@@ -567,6 +596,7 @@ git push origin v1.0.1
 ### Code Review
 
 PRs should:
+
 - Pass all tests
 - Include documentation updates
 - Follow code style guidelines

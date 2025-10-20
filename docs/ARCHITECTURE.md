@@ -43,6 +43,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 **Purpose:** Central coordinator and message router
 
 **Responsibilities:**
+
 - Intercepts navigation events via `chrome.webNavigation.onBeforeNavigate`
 - Routes messages between UI components and offscreen document
 - Manages caching (DNS, events, manifests)
@@ -50,12 +51,14 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 - Coordinates prefetching for performance
 
 **Key APIs:**
+
 - `chrome.webNavigation` - Navigation interception
 - `chrome.storage` - Cache persistence
 - `chrome.runtime.sendMessage` - Message passing
 - `chrome.offscreen` - Offscreen document lifecycle
 
 **Why Service Worker:**
+
 - Required for Manifest V3 extensions
 - Persistent background processing
 - Can intercept navigation before page loads
@@ -66,6 +69,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 **Purpose:** DOM-based context for network operations
 
 **Responsibilities:**
+
 - WebSocket connections to Nostr relays
 - DNS-over-HTTPS (DoH) queries
 - Nostr event fetching and filtering
@@ -73,18 +77,21 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 - SRI (Subresource Integrity) validation
 
 **Key Features:**
+
 - Maintains persistent WebSocket connections
 - Connection pooling for performance
 - Event deduplication across relays
 - First-EOSE strategy (returns after fastest relay)
 
 **Why Offscreen:**
+
 - Service workers can't use WebSocket directly
 - Provides DOM APIs (WebSocket, fetch)
 - Hidden from user (no UI)
 - Can be long-lived for persistent connections
 
 **Chrome vs Firefox:**
+
 - **Chrome:** Uses persistent offscreen document
 - **Firefox:** Uses background script (similar role)
 
@@ -93,12 +100,14 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 **Purpose:** Simple launcher UI
 
 **Features:**
+
 - Domain input field
 - "Open" button to launch viewer
 - Quick access to extension
 - Minimal UI for fast loading
 
 **Flow:**
+
 1. User enters domain
 2. Sends message to service worker
 3. Service worker opens viewer tab
@@ -109,6 +118,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 **Purpose:** Main browser UI
 
 **Features:**
+
 - Address bar with domain input
 - Navigation buttons (back, forward, refresh)
 - Settings button (gear icon)
@@ -116,6 +126,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 - Sandboxed content rendering
 
 **Responsibilities:**
+
 - User interaction handling
 - History stack management
 - Communication with service worker
@@ -123,6 +134,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 - Loading state indicators
 
 **Communication:**
+
 - Sends load requests to service worker
 - Receives assembled HTML from service worker
 - Passes HTML to sandbox for rendering
@@ -132,18 +144,21 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 **Purpose:** Isolated renderer for untrusted content
 
 **Features:**
+
 - CSP-exempt (allows inline scripts)
 - `sandbox` attribute without `allow-same-origin`
 - Isolated from extension context
 - Cannot access extension APIs
 
 **Security:**
+
 - No access to extension storage
 - No access to browser cookies
 - No cross-origin requests (enforced by CSP)
 - Cannot escape sandbox
 
 **Why Sandbox:**
+
 - Nostr Web sites may include inline JavaScript
 - Extension CSP is too strict for dynamic content
 - Sandbox provides safe execution environment
@@ -188,6 +203,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 ### Message Types
 
 **Service Worker Commands:**
+
 - `nw.load` - Load a Nostr Web site
 - `nw.open` - Open viewer with specific domain
 - `dnsBootstrap` - Perform DNS lookup
@@ -198,6 +214,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 - `assembleDocument` - Build final HTML
 
 **Responses:**
+
 - `success` - Operation completed
 - `error` - Operation failed (with error details)
 - `cached` - Served from cache
@@ -208,6 +225,7 @@ The Nostr Web Extension follows production patterns from MetaMask and other majo
 ### Chrome
 
 **Structure:**
+
 ```
 Service Worker (sw.js)
     ↓
@@ -217,6 +235,7 @@ WebSocket Pool (persistent)
 ```
 
 **Features:**
+
 - Persistent offscreen document
 - Long-lived WebSocket connections
 - Automatic reconnection
@@ -225,6 +244,7 @@ WebSocket Pool (persistent)
 ### Firefox
 
 **Structure:**
+
 ```
 Background Script (background.js)
     ↓
@@ -232,6 +252,7 @@ WebSocket Pool (with auto-reconnect)
 ```
 
 **Features:**
+
 - Background script instead of offscreen
 - Auto-reconnect on connection close
 - Similar functionality to Chrome
@@ -245,6 +266,7 @@ Firefox doesn't have offscreen documents, so we use a background script with sim
 ### 1. Connection Pooling
 
 Maintains open WebSocket connections to all configured relays:
+
 - Avoids reconnection overhead
 - Reduces latency on subsequent loads
 - Automatic reconnection if dropped
@@ -252,6 +274,7 @@ Maintains open WebSocket connections to all configured relays:
 ### 2. First-EOSE Strategy
 
 Returns results from the fastest relay:
+
 - Queries all relays simultaneously
 - Returns after first relay sends EOSE
 - 200ms buffer to catch other fast relays
@@ -260,6 +283,7 @@ Returns results from the fastest relay:
 ### 3. Event Deduplication
 
 Prevents duplicate events from multiple relays:
+
 - Tracks seen event IDs
 - Filters duplicates before processing
 - Reduces bandwidth and processing
@@ -267,6 +291,7 @@ Prevents duplicate events from multiple relays:
 ### 4. Smart Caching
 
 Different cache strategies for different event types:
+
 - DNS: Cache for offline use
 - Entrypoint: Always fetch fresh
 - Site Index: Cache 30 seconds
@@ -276,6 +301,7 @@ Different cache strategies for different event types:
 ### 5. Prefetching
 
 Speculatively fetches content:
+
 - On navigation hover
 - On history navigation
 - Reduces perceived latency
@@ -285,12 +311,14 @@ Speculatively fetches content:
 ### Extension Context
 
 **Strict CSP:**
+
 ```
 script-src 'self' 'wasm-unsafe-eval';
 object-src 'none';
 ```
 
 **Privileges:**
+
 - Access to extension APIs
 - Access to storage
 - Can intercept navigation
@@ -299,18 +327,21 @@ object-src 'none';
 ### Sandbox Context
 
 **Relaxed CSP:**
+
 ```
 script-src 'self' 'unsafe-inline' 'unsafe-eval';
 style-src 'self' 'unsafe-inline';
 ```
 
 **Restrictions:**
+
 - No extension API access
 - No cross-origin requests
 - No access to extension storage
 - Isolated from parent context
 
 **Communication:**
+
 - One-way: Extension → Sandbox (HTML injection)
 - Limited: Sandbox → Extension (postMessage for navigation)
 
@@ -319,6 +350,7 @@ style-src 'self' 'unsafe-inline';
 ### logger.js
 
 Production-grade logging system:
+
 - Multiple log levels (error, warn, info, debug, trace)
 - Sampling to reduce noise
 - Separate loggers per context
@@ -327,6 +359,7 @@ Production-grade logging system:
 ### constants.js
 
 Centralized configuration:
+
 - Event kinds
 - Cache TTLs
 - Timeouts
@@ -336,6 +369,7 @@ Centralized configuration:
 ### errors.js
 
 Custom error classes:
+
 - `DNSError` - DNS lookup failures
 - `RelayError` - Relay connection issues
 - `ManifestError` - Missing or invalid manifests
@@ -345,6 +379,7 @@ Custom error classes:
 ### validation.js
 
 Input validation utilities:
+
 - Domain validation
 - URL validation
 - Pubkey validation
@@ -375,16 +410,19 @@ Input validation utilities:
 ### Debugging
 
 **Service Worker:**
+
 ```
 chrome://extensions → Details → Service Worker → Inspect
 ```
 
 **Offscreen Document:**
+
 ```
 chrome://extensions → Details → Inspect views: offscreen.html
 ```
 
 **Viewer:**
+
 ```
 Right-click viewer tab → Inspect
 ```
@@ -392,19 +430,22 @@ Right-click viewer tab → Inspect
 ### Logging
 
 Enable debug logging:
+
 ```javascript
-import { swLogger } from './shared/logger.js';
-swLogger.setLevel('debug');
+import { swLogger } from "./shared/logger.js";
+swLogger.setLevel("debug");
 ```
 
 ### Testing
 
 Run automated tests:
+
 ```bash
 npm test
 ```
 
 Load unpacked extension:
+
 ```bash
 npm run build:chrome
 # Then load dist/chrome/ in chrome://extensions

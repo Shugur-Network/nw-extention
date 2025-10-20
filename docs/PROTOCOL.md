@@ -38,6 +38,7 @@ Stores all types of content assets:
 ```
 
 **Tags:**
+
 - `mime` (required) - MIME type of the content
 - `sha256` (required for JavaScript) - SHA256 hash for integrity verification
 - `encoding` (optional) - `base64` if content is binary
@@ -68,6 +69,7 @@ Defines the structure of a single page/route:
 ```
 
 **Tags:**
+
 - `a` (required, multiple) - Asset references: `["a", "<event-id>", "<mime-type>"]`
 - `title` (optional) - Page title for `<title>` tag
 - `description` (optional) - Meta description
@@ -101,6 +103,7 @@ Lists all page manifests for the website:
 ```
 
 **Tags:**
+
 - `d` (required) - Content hash of all manifest IDs (for content-addressing)
 - `m` (required, multiple) - Manifest mappings: `["m", "<manifest-id>", "<route>"]`
 - `title` (optional) - Site-wide title
@@ -132,6 +135,7 @@ Points to the current site index:
 ```
 
 **Tags:**
+
 - `d` (required) - Domain name (e.g., "nweb.shugur.com")
 
 **Purpose:**
@@ -155,10 +159,12 @@ DNS TXT record at `_nweb.<domain>` contains JSON:
 ```
 
 **Required Fields:**
+
 - `pk` - Public key in hex format (64 characters)
 - `relays` - Array of WebSocket relay URLs (minimum 1, recommended 3+)
 
 **Optional Fields:**
+
 - `blossom` - Array of Blossom media server URLs for large files
 
 ### Example
@@ -213,26 +219,31 @@ For domain `nweb.shugur.com`:
 ### Caching Strategy
 
 **DNS Records:**
+
 - TTL: Offline only
 - Strategy: Always fetch fresh, cache for offline fallback
 - Rationale: Detect pubkey rotation and relay changes
 
 **Entrypoint (kind 11126):**
+
 - TTL: 0 seconds (always fresh)
 - Strategy: Always query relays
 - Rationale: Must detect site updates immediately
 
 **Site Index (kind 31126):**
+
 - TTL: 30 seconds
 - Strategy: Cache temporarily, fetch if entrypoint changed
 - Rationale: Reduce unnecessary queries while detecting updates
 
 **Page Manifests (kind 1126):**
+
 - TTL: 30 seconds
 - Strategy: Cache temporarily, fetch if site index changed
 - Rationale: Balance performance with update detection
 
 **Assets (kind 1125):**
+
 - TTL: 7 days
 - Strategy: Content-addressed, immutable
 - Rationale: Assets never change (referenced by ID)
@@ -323,11 +334,13 @@ Wait for DNS propagation (5-30 minutes).
 **All events MUST be authored by the pubkey specified in DNS.**
 
 The extension:
+
 1. Fetches pubkey from DNS TXT record
 2. Verifies `event.pubkey === dns.pk` for all events
 3. Rejects events from other authors
 
 This prevents:
+
 - Impersonation attacks
 - Content injection
 - Unauthorized updates
@@ -348,12 +361,14 @@ This prevents:
 ```
 
 The extension:
+
 1. Downloads JavaScript content
 2. Computes SHA256 hash
 3. Compares with hash in event tag
 4. Rejects if mismatch
 
 This prevents:
+
 - Code tampering
 - Malicious relays
 - Man-in-the-middle attacks
@@ -367,6 +382,7 @@ This prevents:
 ```
 
 Sandbox prevents:
+
 - Access to extension APIs
 - Access to browser storage
 - Cross-origin requests

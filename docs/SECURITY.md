@@ -31,6 +31,7 @@ if (event.pubkey !== dns.pk) {
 ```
 
 **Protection Against:**
+
 - Impersonation attacks
 - Content injection from unauthorized parties
 - Relay manipulation
@@ -58,7 +59,10 @@ JavaScript assets (kind 1125) MUST include SHA256 hash:
   "content": "alert('Hello World');",
   "tags": [
     ["mime", "application/javascript"],
-    ["sha256", "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"]
+    [
+      "sha256",
+      "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+    ]
   ]
 }
 ```
@@ -66,8 +70,8 @@ JavaScript assets (kind 1125) MUST include SHA256 hash:
 **Verification:**
 
 ```javascript
-const computed = await crypto.subtle.digest('SHA-256', content);
-const expected = event.tags.find(t => t[0] === 'sha256')[1];
+const computed = await crypto.subtle.digest("SHA-256", content);
+const expected = event.tags.find((t) => t[0] === "sha256")[1];
 
 if (computed !== expected) {
   throw new Error("Integrity check failed");
@@ -75,6 +79,7 @@ if (computed !== expected) {
 ```
 
 **Protection Against:**
+
 - Code tampering by malicious relays
 - Man-in-the-middle attacks
 - Corrupted downloads
@@ -116,18 +121,17 @@ connect-src 'self' https: wss:;
 **Sandbox Attributes:**
 
 ```html
-<iframe 
-  sandbox="allow-scripts allow-popups allow-forms"
-  src="...">
-</iframe>
+<iframe sandbox="allow-scripts allow-popups allow-forms" src="..."> </iframe>
 ```
 
 **What's Allowed:**
+
 - `allow-scripts` - JavaScript execution
 - `allow-popups` - Opening new windows
 - `allow-forms` - Form submission
 
 **What's Blocked:**
+
 - `allow-same-origin` - **NOT SET** (crucial for security)
 - Access to extension APIs
 - Access to browser storage (cookies, localStorage)
@@ -135,6 +139,7 @@ connect-src 'self' https: wss:;
 - XMLHttpRequest to other origins
 
 **Protection Against:**
+
 - XSS (Cross-Site Scripting)
 - Sandbox escape attempts
 - Extension API abuse
@@ -149,11 +154,11 @@ connect-src 'self' https: wss:;
 
 ```javascript
 // Per-host limit
-MAX_QUERIES_PER_HOST = 10;  // per minute
-WINDOW_SIZE = 60000;  // 1 minute
+MAX_QUERIES_PER_HOST = 10; // per minute
+WINDOW_SIZE = 60000; // 1 minute
 
 // Global limit
-MAX_QUERIES_GLOBAL = 100;  // per minute
+MAX_QUERIES_GLOBAL = 100; // per minute
 ```
 
 **Implementation:**
@@ -166,6 +171,7 @@ if (queryCount >= MAX_QUERIES_PER_HOST) {
 ```
 
 **Protection Against:**
+
 - DNS amplification attacks
 - Resource exhaustion
 - API abuse
@@ -190,7 +196,7 @@ if (!DOMAIN_PATTERN.test(domain)) {
 
 ```javascript
 // Reject directory traversal
-if (route.includes('..')) {
+if (route.includes("..")) {
   throw new ValidationError("Invalid route");
 }
 
@@ -203,7 +209,7 @@ if (/<|>|'|"/.test(route)) {
 **URL Length Limits:**
 
 ```javascript
-const MAX_URL_LENGTH = 253;  // DNS spec limit
+const MAX_URL_LENGTH = 253; // DNS spec limit
 const MAX_ROUTE_LENGTH = 1024;
 
 if (url.length > MAX_URL_LENGTH) {
@@ -212,6 +218,7 @@ if (url.length > MAX_URL_LENGTH) {
 ```
 
 **Protection Against:**
+
 - SQL injection
 - XSS attacks
 - Path traversal
@@ -225,6 +232,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** Relay returns fake events with malicious JavaScript
 
 **Mitigation:**
+
 1. Author pinning - Events from wrong pubkey are rejected
 2. SRI verification - Modified JavaScript fails hash check
 3. Signature verification - Invalid signatures are rejected
@@ -236,6 +244,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** Attacker controls DNS and points to their pubkey
 
 **Mitigation:**
+
 - DNS is trusted by design (same as regular web)
 - Users can verify pubkey independently
 - Domain ownership proves legitimacy
@@ -248,6 +257,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** Malicious site tries to inject scripts into extension
 
 **Mitigation:**
+
 1. Sandbox isolation - No access to extension context
 2. CSP enforcement - Strict policies on extension pages
 3. No `allow-same-origin` - Sandbox can't access parent
@@ -259,6 +269,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** Malicious code tries to break out of sandbox
 
 **Mitigation:**
+
 1. Browser-enforced sandbox (not bypassable)
 2. No `allow-same-origin` flag (prevents most escapes)
 3. Separate process in modern browsers
@@ -271,6 +282,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** All relays refuse to serve content
 
 **Mitigation:**
+
 1. Cache fallback - Serves cached version
 2. Multiple relays - Redundancy prevents single point of failure
 3. User can add custom relays
@@ -282,6 +294,7 @@ if (url.length > MAX_URL_LENGTH) {
 **Attack:** MITM attacker intercepts DNS queries
 
 **Mitigation:**
+
 1. DNS-over-HTTPS (DoH) - Encrypted DNS queries
 2. Uses Google/Cloudflare DNS - Trusted resolvers
 3. DNSSEC support (if enabled)
