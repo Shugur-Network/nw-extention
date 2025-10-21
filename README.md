@@ -114,6 +114,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 - **Website:** https://nweb.shugur.com
 - **GitHub:** https://github.com/Shugur-Network/nw-extention
 - **Issues:** https://github.com/Shugur-Network/nw-extention/issues
+- **Publisher Tool:** [nw-publisher on npm](https://www.npmjs.com/package/nw-publisher)
 - **Chrome Store:** https://chromewebstore.google.com/detail/nostr-web-browser/hhdngjdmlabdachflbdfapkogadodkif
 - **Firefox Add-ons:** https://addons.mozilla.org/en-US/firefox/addon/nostr-web-browser/
 
