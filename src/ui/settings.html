@@ -387,25 +387,76 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Cache Management</div>
-
-        <div class="setting-row">
-          <div class="setting-info">
-            <div class="setting-label">Clear All Caches</div>
-            <div class="setting-description">
+        <div class="section-title">Advanced</div>
+        <div class="setting-description" style="margin-bottom: 12px">
+          Developer and diagnostic tools
+        </div>
+        <button
+          class="button secondary"
+          id="toggleAdvanced"
+          style="width: 100%"
+        >
+          Show Advanced Options
+        </button>
+        <div id="advancedSection" style="display: none; margin-top: 16px">
+          <!-- Cache Management -->
+          <div
+            style="
+              padding: 16px;
+              background: #f5f5f5;
+              border-radius: 8px;
+              border: 1px solid #e8e8e8;
+              margin-bottom: 16px;
+            "
+          >
+            <strong style="display: block; margin-bottom: 8px"
+              >Cache Management</strong
+            >
+            <div class="setting-description" style="margin-bottom: 12px">
               Reset DNS, events, and site index caches
             </div>
+            <button
+              class="button secondary"
+              id="clearCache"
+            >
+              Clear Cache
+            </button>
           </div>
-          <button class="button secondary" id="clearCache">Clear Cache</button>
+
+          <!-- Performance Metrics -->
+          <div
+            style="
+              padding: 16px;
+              background: #f5f5f5;
+              border-radius: 8px;
+              border: 1px solid #e8e8e8;
+            "
+          >
+            <strong style="display: block; margin-bottom: 8px"
+              >Performance Metrics</strong
+            >
+            <div id="performanceStats" class="setting-description">
+              Loading performance data...
+            </div>
+            <button
+              class="button secondary"
+              id="refreshPerformance"
+              style="margin-top: 12px"
+            >
+              Refresh Stats
+            </button>
+          </div>
         </div>
       </div>
 
       <div class="section">
         <div class="section-title">About</div>
         <div class="setting-description">
-          <strong>Nostr Web Extension</strong> v0.9.6<br /><br />
+          <strong>Nostr Web Extension</strong> v1.0.0<br /><br />
           Decentralized static websites over Nostr<br /><br />
-          <a href="https://github.com/Shugur-Network/nw-extention" target="_blank"
+          <a
+            href="https://github.com/Shugur-Network/nw-extention"
+            target="_blank"
             >GitHub</a
           >
           ·

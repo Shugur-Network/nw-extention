@@ -7,6 +7,8 @@ import { CONFIG, ERROR_MESSAGES } from "./shared/constants.js";
 import { uiLogger as logger } from "./shared/logger.js";
 import { validateAndParseURL } from "./shared/validation.js";
 import { normalizeError } from "./shared/errors.js";
+import { bookmarks } from "./shared/bookmarks.js";
+import { performanceMonitor } from "./shared/performance.js";
 
 // DOM elements
 const urlInput = document.getElementById("urlInput");
@@ -14,9 +16,16 @@ const goBtn = document.getElementById("goBtn");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const reloadBtn = document.getElementById("reloadBtn");
+const bookmarkBtn = document.getElementById("bookmarkBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const statusEl = document.getElementById("status");
 const frameContainer = document.getElementById("contentFrame");
+const bookmarksDropdown = document.getElementById("bookmarksDropdown");
+const bookmarksListDropdown = document.getElementById("bookmarksListDropdown");
+const bookmarksSearchInput = document.getElementById("bookmarksSearchInput");
+const closeBookmarksDropdown = document.getElementById("closeBookmarksDropdown");
+const addBookmarkFromDropdownBtn = document.getElementById("addBookmarkFromDropdownBtn");
+const manageBookmarksBtn = document.getElementById("manageBookmarksBtn");
 
 // Sandboxed iframe reference
 let sandboxFrame = null;
@@ -199,6 +208,120 @@ function updateNavigationButtons() {
 }
 
 /**
+ * Update bookmark button state based on current page
+ */
+async function updateBookmarkButton() {
+  if (!currentDomain) {
+    bookmarkBtn.disabled = true;
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
+    bookmarkBtn.title = "Bookmarks";
+    return;
+  }
+
+  const currentUrl = `${currentDomain}${currentRoute}`;
+  const isBookmarked = await bookmarks.has(currentUrl);
+
+  bookmarkBtn.disabled = false;
+  bookmarkBtn.title = "Bookmarks";
+  
+  if (isBookmarked) {
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark-filled");
+    bookmarkBtn.style.color = "#ff9500"; // Orange color for bookmarked
+  } else {
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
+    bookmarkBtn.style.color = "";
+  }
+}
+
+/**
+ * Show bookmarks dropdown when clicking bookmark icon
+ */
+async function showBookmarksPanel() {
+  await showBookmarksDropdown();
+}
+
+/**
+ * Show bookmarks dropdown
+ */
+async function showBookmarksDropdown() {
+  bookmarksDropdown.classList.add("show");
+  await loadBookmarksDropdown();
+  bookmarksSearchInput.value = "";
+  bookmarksSearchInput.focus();
+}
+
+/**
+ * Hide bookmarks dropdown
+ */
+function hideBookmarksDropdown() {
+  bookmarksDropdown.classList.remove("show");
+}
+
+/**
+ * Load bookmarks into dropdown
+ */
+async function loadBookmarksDropdown(searchQuery = "") {
+  try {
+    await bookmarks.init();
+    
+    const allBookmarks = await bookmarks.getAll({
+      sortBy: "createdAt",
+      ascending: false,
+      search: searchQuery,
+    });
+
+    if (allBookmarks.length === 0) {
+      bookmarksListDropdown.innerHTML = `
+        <div class="bookmark-empty">
+          <div>${searchQuery ? "No results found" : "No bookmarks yet"}</div>
+        </div>
+      `;
+      return;
+    }
+
+    bookmarksListDropdown.innerHTML = "";
+
+    for (const bookmark of allBookmarks) {
+      const item = document.createElement("div");
+      item.className = "bookmark-item-dropdown";
+      
+      const firstLetter = (bookmark.title || bookmark.host || "N")[0].toUpperCase();
+      
+      item.innerHTML = `
+        <div class="bookmark-item-favicon">${bookmark.favicon ? `<img src="${bookmark.favicon}" width="24" height="24" style="border-radius: 6px;">` : firstLetter}</div>
+        <div class="bookmark-item-info">
+          <div class="bookmark-item-title">${escapeHtml(bookmark.title || bookmark.host)}</div>
+          <div class="bookmark-item-url">${escapeHtml(bookmark.host)}${escapeHtml(bookmark.route || "")}</div>
+        </div>
+      `;
+
+      item.addEventListener("click", () => {
+        loadSite(bookmark.url);
+        hideBookmarksDropdown();
+      });
+
+      bookmarksListDropdown.appendChild(item);
+    }
+  } catch (e) {
+    logger.error("Failed to load bookmarks dropdown", { error: e.message });
+    bookmarksListDropdown.innerHTML = `
+      <div class="bookmark-empty">
+        <div>Failed to load</div>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Utility: Escape HTML
+ */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
  * Get user-friendly error message
  * @param {Error} error
  * @returns {{message: string, help: string}}
@@ -353,6 +476,9 @@ async function loadSite(input, pushHistory = true) {
   logger.info("Loading site", target);
   setStatus("Loading…");
 
+  // Start performance tracking
+  const loadStartTime = performance.now();
+
   try {
     // Request content from service worker
     const response = await chrome.runtime.sendMessage({
@@ -417,10 +543,25 @@ async function loadSite(input, pushHistory = true) {
     urlInput.value = `${target.host}${target.route}`;
     setStatus(`✓ Loaded ${target.host}${target.route}`);
     updateNavigationButtons();
+    await updateBookmarkButton();
+
+    // Record successful load performance
+    const loadEndTime = performance.now();
+    const totalTime = loadEndTime - loadStartTime;
+    await performanceMonitor.recordLoad({
+      url: `${target.host}${target.route}`,
+      host: target.host,
+      route: target.route,
+      startTime: loadStartTime,
+      endTime: loadEndTime,
+      totalTime: totalTime,
+      success: true,
+    });
 
     logger.info("Site loaded successfully", {
       historyIndex,
       historyLength: navigationHistory.length,
+      loadTime: Math.round(totalTime) + "ms",
     });
   } catch (e) {
     logger.error("Failed to load site", e);
@@ -512,6 +653,20 @@ async function loadSite(input, pushHistory = true) {
       );
     }
 
+    // Record failed load performance
+    const loadEndTime = performance.now();
+    const totalTime = loadEndTime - loadStartTime;
+    await performanceMonitor.recordLoad({
+      url: `${target.host}${target.route}`,
+      host: target.host,
+      route: target.route,
+      startTime: loadStartTime,
+      endTime: loadEndTime,
+      totalTime: totalTime,
+      success: false,
+      error: e.message,
+    });
+
     updateNavigationButtons();
   }
 }
@@ -571,6 +726,66 @@ urlInput.addEventListener("keydown", (e) => {
 backBtn.addEventListener("click", () => navigateRelative(-1));
 forwardBtn.addEventListener("click", () => navigateRelative(1));
 reloadBtn.addEventListener("click", reload);
+
+// Bookmark button - show bookmarks dropdown
+bookmarkBtn.addEventListener("click", showBookmarksPanel);
+
+// Bookmarks dropdown
+closeBookmarksDropdown.addEventListener("click", hideBookmarksDropdown);
+bookmarksSearchInput.addEventListener("input", (e) => {
+  loadBookmarksDropdown(e.target.value);
+});
+
+// Add bookmark button in dropdown
+addBookmarkFromDropdownBtn.addEventListener("click", async () => {
+  if (!currentDomain) {
+    alert("Please load a page first before bookmarking.");
+    return;
+  }
+
+  const currentUrl = `${currentDomain}${currentRoute}`;
+  const isBookmarked = await bookmarks.has(currentUrl);
+
+  if (isBookmarked) {
+    alert("This page is already bookmarked!");
+    return;
+  }
+
+  try {
+    const bookmark = {
+      url: currentUrl,
+      host: currentDomain,
+      route: currentRoute,
+      title: document.title || currentDomain,
+      createdAt: Date.now(),
+      lastVisited: Date.now(),
+    };
+    
+    await bookmarks.add(bookmark);
+    setStatus(`✓ Bookmarked`);
+    logger.info("Bookmark added from dropdown", { url: currentUrl });
+    
+    // Update button state and reload dropdown
+    await updateBookmarkButton();
+    await loadBookmarksDropdown();
+  } catch (e) {
+    logger.error("Failed to add bookmark", e);
+    alert(`Failed to add bookmark: ${e.message}`);
+  }
+});
+
+manageBookmarksBtn.addEventListener("click", () => {
+  const bookmarksUrl = chrome.runtime.getURL("bookmarks.html");
+  chrome.tabs.create({ url: bookmarksUrl });
+  hideBookmarksDropdown();
+});
+
+// Close dropdown when clicking outside
+document.addEventListener("click", (e) => {
+  if (!bookmarksDropdown.contains(e.target) && e.target !== bookmarkBtn && !bookmarkBtn.contains(e.target)) {
+    hideBookmarksDropdown();
+  }
+});
 
 // Settings button
 settingsBtn.addEventListener("click", () => {

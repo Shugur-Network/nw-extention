@@ -1,13 +1,20 @@
 /**
  * Settings Page Logic
- * Manages default website and cache clearing
+ * Manages default website, cache clearing, and performance stats
  */
 
 import { uiLogger as logger } from "./shared/logger.js";
+import { performanceMonitor } from "./shared/performance.js";
 
 const clearCache = document.getElementById("clearCache");
 const defaultSiteInput = document.getElementById("defaultSiteInput");
 const saveDefaultSite = document.getElementById("saveDefaultSite");
+const toggleAdvanced = document.getElementById("toggleAdvanced");
+const advancedSection = document.getElementById("advancedSection");
+const performanceStats = document.getElementById("performanceStats");
+const refreshPerformance = document.getElementById("refreshPerformance");
+
+const browserAPI = typeof browser !== "undefined" ? browser : chrome;
 
 /**
  * Clear all caches
@@ -15,7 +22,7 @@ const saveDefaultSite = document.getElementById("saveDefaultSite");
 clearCache.addEventListener("click", async () => {
   if (
     !confirm(
-      "Clear all caches? This will remove stored DNS records, events, and site indexes.\n\nYour settings (default website, log level) will be preserved."
+      "Clear all caches? \n\nThis will remove stored DNS records, events, and site indexes."
     )
   ) {
     return;
@@ -85,6 +92,83 @@ saveDefaultSite.addEventListener("click", async () => {
     alert(`Failed to save default website: ${err.message}`);
   }
 });
+
+/**
+ * Load performance statistics
+ */
+async function loadPerformanceStats() {
+  try {
+    await performanceMonitor.init();
+
+    const loadStats = await performanceMonitor.getLoadStats();
+    const cacheStats = await performanceMonitor.getCacheStats();
+    const relayStats = await performanceMonitor.getRelayStats();
+
+    performanceStats.innerHTML = `
+      <strong>Load Performance</strong><br>
+      • Total loads: ${loadStats.totalLoads} (${
+      loadStats.successfulLoads
+    } successful, ${loadStats.failedLoads} failed)<br>
+      • Average load time: ${loadStats.averageLoadTime}ms<br>
+      • Median load time: ${loadStats.medianLoadTime}ms<br>
+      ${
+        loadStats.fastestLoad
+          ? `• Fastest: ${loadStats.fastestLoad.time}ms<br>`
+          : ""
+      }
+      ${
+        loadStats.slowestLoad
+          ? `• Slowest: ${loadStats.slowestLoad.time}ms<br>`
+          : ""
+      }
+      <br>
+      <strong>Cache Performance</strong><br>
+      • Hit rate: ${cacheStats.hitRate}%<br>
+      • Total requests: ${cacheStats.totalRequests} (${cacheStats.hits} hits, ${
+      cacheStats.misses
+    } misses)<br>
+      <br>
+      <strong>Relay Performance</strong><br>
+      • Total queries: ${relayStats.totalQueries}<br>
+      • Average query time: ${relayStats.averageQueryTime}ms<br>
+      ${
+        relayStats.relayPerformance.length > 0
+          ? `• Best relay: ${relayStats.relayPerformance[0].url} (${Math.round(
+              relayStats.relayPerformance[0].successRate
+            )}% success)<br>`
+          : ""
+      }
+    `;
+  } catch (e) {
+    logger.error("Failed to load performance stats", { error: e.message });
+    performanceStats.textContent = "Failed to load performance data";
+  }
+}
+
+/**
+ * Utility: Escape HTML
+ */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Event listeners
+toggleAdvanced.addEventListener("click", () => {
+  const isHidden = advancedSection.style.display === "none";
+  advancedSection.style.display = isHidden ? "block" : "none";
+  toggleAdvanced.textContent = isHidden
+    ? "Hide Advanced Options"
+    : "Show Advanced Options";
+
+  // Load performance stats when first opened
+  if (isHidden) {
+    loadPerformanceStats();
+  }
+});
+
+refreshPerformance.addEventListener("click", loadPerformanceStats);
 
 // Initialize UI
 loadDefaultWebsite();

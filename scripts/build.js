@@ -68,6 +68,8 @@ function buildTarget(browser) {
     "popup.js",
     "viewer.html",
     "viewer.js",
+    "bookmarks.html",
+    "bookmarks.js",
     "settings.html",
     "settings.js",
     "sandbox.html",

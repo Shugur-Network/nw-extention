@@ -6,65 +6,22 @@ const browserAPI = typeof browser !== "undefined" ? browser : chrome;
 
 // Import shared modules
 import { swLogger as logger } from "./shared/logger.js";
-
-// ===== CONFIGURATION =====
-const CONFIG = {
-  // Cache TTL
-  TTL_IMM: 7 * 24 * 3600 * 1000, // 7 days (immutable assets)
-  TTL_REP: 30 * 1000, // 30 seconds (page manifests)
-  DNS_CACHE_TTL: 5 * 60 * 1000, // 5 minutes
-
-  // WebSocket settings
-  WS_RECONNECT_DELAY: 1500,
-  WS_QUERY_TIMEOUT: 6000,
-  WS_EOSE_WAIT_TIME: 200,
-  MAX_RELAYS: 10,
-
-  // Security
-  MAX_CONTENT_SIZE: 5 * 1024 * 1024, // 5MB
-  MAX_CACHE_SIZE: 500,
-
-  // Rate limiting
-  DNS_RATE_LIMIT_MAX: 10,
-  GLOBAL_RATE_LIMIT_MAX: 50,
-
-  // Timeouts/Retry
-  MAX_RETRIES: 2,
-  RETRY_DELAY: 1000,
-  RETRY_BACKOFF: 2,
-
-  // Default
-  DEFAULT_SITE: "nweb.shugur.com",
-};
+import { CONFIG, NOSTR } from "./shared/constants.js";
+import { CacheManager } from "./shared/cache-manager.js";
 
 // ===== CACHE LAYER =====
-const cache = new Map();
-const dnsCache = new Map();
-const prefetchCache = new Map();
+// Use shared CacheManager for all caching needs
+const eventCache = new CacheManager("Event Cache", 500);
+const dnsCache = new CacheManager("DNS Cache", CONFIG.DNS_CACHE_MAX_SIZE);
+const prefetchCache = new CacheManager("Prefetch Cache", CONFIG.PREFETCH_MAX_SIZE);
 
+// Helper functions for backward compatibility
 function cget(k) {
-  const x = cache.get(k);
-  if (!x || Date.now() > x.exp) {
-    cache.delete(k);
-    return null;
-  }
-  x.lastAccess = Date.now();
-  return x.val;
+  return eventCache.get(k);
 }
 
 function cset(k, v, ttlMs) {
-  if (cache.size >= CONFIG.MAX_CACHE_SIZE) {
-    let oldest = null,
-      oldestTime = Infinity;
-    for (const [key, entry] of cache.entries()) {
-      if (entry.lastAccess < oldestTime) {
-        oldestTime = entry.lastAccess;
-        oldest = key;
-      }
-    }
-    if (oldest) cache.delete(oldest);
-  }
-  cache.set(k, { val: v, exp: Date.now() + ttlMs, lastAccess: Date.now() });
+  eventCache.set(k, v, ttlMs);
 }
 
 // ===== UTILITY FUNCTIONS =====
@@ -151,6 +108,13 @@ function getTag(ev, name) {
 // ===== DNS LOOKUP =====
 async function dohTxt(host) {
   const ck = "txt:" + host;
+  
+  // Check DNS cache first
+  const cached = dnsCache.get(ck);
+  if (cached) {
+    logger.debug("DNS cache hit", { host });
+    return cached;
+  }
 
   try {
     return await withRetry(async () => {
@@ -175,7 +139,9 @@ async function dohTxt(host) {
             if (a.type === 16 && typeof a.data === "string") {
               const txt = a.data.replace(/^"|"$/g, "").replace(/\\"/g, '"');
               const obj = JSON.parse(txt);
-              cset(ck, obj, 365 * 24 * 3600 * 1000); // Cache for 1 year
+              // Store in DNS cache with long TTL (1 year)
+              dnsCache.set(ck, obj, CONFIG.DNS_CACHE_TTL);
+              logger.debug("DNS resolved and cached", { host });
               return obj;
             }
           }
@@ -186,10 +152,11 @@ async function dohTxt(host) {
       throw new Error("No valid DNS TXT record found");
     }, "DNS lookup");
   } catch (e) {
-    const cached = cget(ck);
-    if (cached) {
+    // Try cache again as fallback (in case network is down)
+    const cachedFallback = dnsCache.get(ck);
+    if (cachedFallback) {
       logger.info("Using cached DNS (offline fallback)", { host });
-      return cached;
+      return cachedFallback;
     }
     throw e;
   }
@@ -197,11 +164,39 @@ async function dohTxt(host) {
 
 // ===== WEBSOCKET RELAY POOL =====
 const activeSockets = new Map();
+const reconnectEnabled = new Map(); // Track which relays should reconnect
+let poolClosed = false; // Track if the entire pool has been closed
 
-function connectRelay(relayUrl) {
+function closeAllRelays() {
+  poolClosed = true;
+  
+  // Disable all reconnections
+  for (const url of activeSockets.keys()) {
+    reconnectEnabled.set(url, false);
+  }
+  
+  // Close all WebSockets
+  for (const state of activeSockets.values()) {
+    if (state.ws) {
+      state.ws.close();
+    }
+  }
+  
+  activeSockets.clear();
+  reconnectEnabled.clear();
+  logger.info("All relay connections closed");
+}
+
+function connectRelay(relayUrl, allowReconnect = true) {
+  // Don't connect if pool is closed
+  if (poolClosed) return null;
+  
   if (activeSockets.has(relayUrl)) {
     return activeSockets.get(relayUrl);
   }
+
+  // Enable reconnection for this URL
+  reconnectEnabled.set(relayUrl, allowReconnect);
 
   const ws = new WebSocket(relayUrl);
   const state = {
@@ -209,6 +204,7 @@ function connectRelay(relayUrl) {
     ready: false,
     subscriptions: new Map(),
     messageQueue: [],
+    url: relayUrl, // Store URL for logging
   };
 
   // Set a connection timeout - if relay doesn't connect within 3 seconds, mark it as slow
@@ -242,9 +238,9 @@ function connectRelay(relayUrl) {
     }
   };
 
-  ws.onerror = () => {
+  ws.onerror = (err) => {
     clearTimeout(connectionTimeout);
-    logger.warn("Relay error", { relay: relayUrl });
+    logger.warn("Relay error", { relay: relayUrl, error: err.message || "unknown" });
   };
 
   ws.onclose = () => {
@@ -252,11 +248,26 @@ function connectRelay(relayUrl) {
     logger.debug("Relay disconnected", { relay: relayUrl });
     activeSockets.delete(relayUrl);
 
-    // Auto-reconnect after delay (like Chrome does)
-    setTimeout(() => {
+    // Only reconnect if:
+    // 1. Pool is not closed
+    // 2. Reconnection is enabled for this URL
+    const shouldReconnect = 
+      !poolClosed && 
+      reconnectEnabled.get(relayUrl) === true;
+
+    if (shouldReconnect) {
       logger.debug("Auto-reconnecting to relay", { relay: relayUrl });
-      connectRelay(relayUrl);
-    }, CONFIG.WS_RECONNECT_DELAY);
+      setTimeout(() => {
+        connectRelay(relayUrl, true);
+      }, CONFIG.WS_RECONNECT_DELAY);
+    } else {
+      logger.debug("Not reconnecting to relay", { 
+        relay: relayUrl, 
+        poolClosed,
+        reconnectEnabled: reconnectEnabled.get(relayUrl)
+      });
+      reconnectEnabled.delete(relayUrl);
+    }
   };
 
   activeSockets.set(relayUrl, state);
@@ -466,7 +477,7 @@ async function fetchManifestForRoute(pk, relays, route, siteIndex) {
     logger.debug("Manifest fetched by ID", {
       id: manifest.id.slice(0, 8),
     });
-    cset(ck, manifest, CONFIG.TTL_IMM); // Cache with long TTL (immutable by ID)
+    cset(ck, manifest, NOSTR.TTL_IMM); // Cache with long TTL (immutable by ID)
     return manifest;
   }
 
@@ -504,7 +515,7 @@ async function fetchAssetsByIds(ids, relays) {
 
     // Cache assets (immutable, long TTL)
     for (const ev of events) {
-      cset(`asset:${ev.id}`, ev, CONFIG.TTL_IMM);
+      cset(`asset:${ev.id}`, ev, NOSTR.TTL_IMM);
       results.push(ev);
     }
   }
@@ -657,9 +668,14 @@ browserAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const result = await fetchAssetsByIds(params.ids, params.relays);
         sendResponse({ result });
       } else if (method === "clearCache") {
-        cache.clear();
+        eventCache.clear();
         dnsCache.clear();
         prefetchCache.clear();
+        logger.info("All caches cleared", {
+          eventCache: eventCache.size,
+          dnsCache: dnsCache.size,
+          prefetchCache: prefetchCache.size,
+        });
         sendResponse({ result: "Cache cleared" });
       } else {
         sendResponse({ error: "Unknown method: " + method });

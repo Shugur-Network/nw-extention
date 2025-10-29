@@ -1,29 +1,6 @@
 // Enterprise-grade logging
 import { offscreenLogger as logger } from "./shared/logger.js";
-
-// Configuration constants
-const CONFIG = {
-  // Cache TTL settings
-  TTL_IMM: 7 * 24 * 3600 * 1000, // 7 days (immutable)
-  TTL_REP: 30 * 1000, // 30 seconds (site index - validated against entrypoint)
-  // NOTE: Entrypoint (11126) is ALWAYS fetched fresh - never cached!
-
-  // WebSocket settings
-  WS_RECONNECT_DELAY: 1500, // 1.5 seconds
-  WS_QUERY_TIMEOUT: 6000, // 6 seconds
-  WS_EOSE_WAIT_TIME: 200, // 200ms after first EOSE
-
-  // Relay connection settings
-  MAX_RELAYS: 10, // Maximum number of relays to connect to
-
-  // Security settings
-  MAX_CONTENT_SIZE: 5 * 1024 * 1024, // 5MB max content size
-
-  // Retry settings
-  MAX_RETRIES: 2, // Max retry attempts for transient failures
-  RETRY_DELAY: 1000, // Base delay between retries (ms)
-  RETRY_BACKOFF: 2, // Exponential backoff multiplier
-};
+import { CONFIG, NOSTR } from "./shared/constants.js";
 
 // ---- Retry utility for transient failures ----
 async function withRetry(fn, operation = "operation") {
@@ -225,54 +202,117 @@ class Pool {
     this.listeners = new Map();
     this.next = 0;
     this.lastActivity = new Map(); // Track activity per relay
+    this.reconnectEnabled = new Map(); // Track which relays should reconnect
     this.cleanupTimer = null;
+    this.closed = false; // Track if pool has been closed
     this.startCleanupTimer();
   }
 
   startCleanupTimer() {
     // Clean up idle connections every 5 minutes
     this.cleanupTimer = setInterval(() => {
+      if (this.closed) return; // Don't clean up if pool is closed
+
       const now = Date.now();
+      const idleTimeout = 5 * 60 * 1000; // 5 min idle
+
       for (const [url, lastTime] of this.lastActivity.entries()) {
-        if (now - lastTime > 5 * 60 * 1000) {
-          // 5 min idle
-          this.closeRelay(url);
+        if (now - lastTime > idleTimeout) {
+          logger.debug("Closing idle relay connection", { url });
+          this.closeRelay(url, false); // Don't allow reconnect for idle connections
         }
       }
     }, 60 * 1000); // Check every minute
   }
 
-  closeRelay(url) {
+  closeRelay(url, allowReconnect = false) {
     const ws = this.sockets.get(url);
     if (ws) {
+      // Disable reconnection before closing
+      this.reconnectEnabled.set(url, allowReconnect);
       ws.close();
       this.sockets.delete(url);
       this.lastActivity.delete(url);
+
+      // Clean up reconnect flag after a delay
+      if (!allowReconnect) {
+        setTimeout(() => {
+          this.reconnectEnabled.delete(url);
+        }, CONFIG.WS_RECONNECT_DELAY * 2);
+      }
     }
   }
 
   close() {
+    this.closed = true;
+
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+
+    // Disable all reconnections
+    for (const url of this.sockets.keys()) {
+      this.reconnectEnabled.set(url, false);
+    }
+
+    // Close all WebSockets
     for (const ws of this.sockets.values()) {
       ws.close();
     }
+
     this.sockets.clear();
     this.listeners.clear();
     this.lastActivity.clear();
+    this.reconnectEnabled.clear();
   }
 
   connectAll() {
     for (const u of this.urls) this.connect(u);
   }
+
   connect(url) {
+    // Don't connect if pool is closed
+    if (this.closed) return;
+
+    // Enable reconnection for this URL
+    this.reconnectEnabled.set(url, true);
+
     const ws = new WebSocket(url);
-    ws.onopen = () => {};
-    ws.onclose = () =>
-      setTimeout(() => this.connect(url), CONFIG.WS_RECONNECT_DELAY);
-    ws.onerror = () => {};
+    ws.onopen = () => {
+      logger.debug("Relay connected", { url });
+    };
+
+    ws.onclose = () => {
+      // Only reconnect if:
+      // 1. Pool is not closed
+      // 2. Reconnection is enabled for this URL
+      // 3. URL is still in the pool's URL list
+      const shouldReconnect =
+        !this.closed &&
+        this.reconnectEnabled.get(url) === true &&
+        this.urls.includes(url);
+
+      if (shouldReconnect) {
+        logger.debug("Relay disconnected, reconnecting", { url });
+        setTimeout(() => this.connect(url), CONFIG.WS_RECONNECT_DELAY);
+      } else {
+        logger.debug("Relay disconnected, not reconnecting", {
+          url,
+          closed: this.closed,
+          reconnectEnabled: this.reconnectEnabled.get(url),
+        });
+        this.reconnectEnabled.delete(url);
+      }
+    };
+
+    ws.onerror = (err) => {
+      logger.debug("Relay connection error", {
+        url,
+        error: err.message || "unknown",
+      });
+    };
+
     ws.onmessage = (ev) => {
       let msg;
       try {
@@ -288,7 +328,7 @@ class Pool {
     };
     this.sockets.set(url, ws);
   }
-  query(filters, ttlKey = null, ttlMs = TTL_REP) {
+  query(filters, ttlKey = null, ttlMs = NOSTR.TTL_REP) {
     if (ttlKey) {
       const hit = cget(ttlKey);
       if (hit) return Promise.resolve(hit);
@@ -458,7 +498,7 @@ async function fetchSiteIndex({ boot }) {
   const siteIndexEvs = await p.query(
     { kinds: [31126], authors: [boot.pk], "#d": [dTag] },
     `idx:${boot.pk}:${dTag}`,
-    CONFIG.TTL_REP // 30 second cache
+    NOSTR.TTL_REP // 30 second cache
   );
 
   if (!siteIndexEvs.length) {
@@ -542,7 +582,7 @@ async function fetchManifestForRoute({ boot, siteIndex, route }) {
   const manifestEvs = await p.query(
     { ids: [manifestId] },
     "man:" + manifestId,
-    CONFIG.TTL_IMM // Cache with long TTL (immutable by ID)
+    NOSTR.TTL_IMM // Cache with long TTL (immutable by ID)
   );
 
   if (manifestEvs.length > 0) {
@@ -608,7 +648,7 @@ async function fetchAssets({ boot, manifest, siteIndexId }) {
     : `assets:${assetIds.join(",")}`;
 
   // Fetch all assets by ID (kind 1125 - all assets use same kind)
-  const events = await p.query({ ids: assetIds }, cacheKey, CONFIG.TTL_IMM);
+  const events = await p.query({ ids: assetIds }, cacheKey, NOSTR.TTL_IMM);
 
   const byId = Object.fromEntries(events.map((e) => [e.id, e]));
 
