@@ -16,10 +16,14 @@ const goBtn = document.getElementById("goBtn");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const reloadBtn = document.getElementById("reloadBtn");
-const bookmarkBtn = document.getElementById("bookmarkBtn");
-const settingsBtn = document.getElementById("settingsBtn");
+const menuBtn = document.getElementById("menuBtn");
 const statusEl = document.getElementById("status");
 const frameContainer = document.getElementById("contentFrame");
+const menuDropdown = document.getElementById("menuDropdown");
+const menuHome = document.getElementById("menuHome");
+const menuHistory = document.getElementById("menuHistory");
+const menuBookmarks = document.getElementById("menuBookmarks");
+const menuSettings = document.getElementById("menuSettings");
 const bookmarksDropdown = document.getElementById("bookmarksDropdown");
 const bookmarksListDropdown = document.getElementById("bookmarksListDropdown");
 const bookmarksSearchInput = document.getElementById("bookmarksSearchInput");
@@ -208,36 +212,17 @@ function updateNavigationButtons() {
 }
 
 /**
- * Update bookmark button state based on current page
+ * Show menu dropdown
  */
-async function updateBookmarkButton() {
-  if (!currentDomain) {
-    bookmarkBtn.disabled = true;
-    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
-    bookmarkBtn.title = "Bookmarks";
-    return;
-  }
-
-  const currentUrl = `${currentDomain}${currentRoute}`;
-  const isBookmarked = await bookmarks.has(currentUrl);
-
-  bookmarkBtn.disabled = false;
-  bookmarkBtn.title = "Bookmarks";
-  
-  if (isBookmarked) {
-    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark-filled");
-    bookmarkBtn.style.color = "#ff9500"; // Orange color for bookmarked
-  } else {
-    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
-    bookmarkBtn.style.color = "";
-  }
+function showMenu() {
+  menuDropdown.classList.add("show");
 }
 
 /**
- * Show bookmarks dropdown when clicking bookmark icon
+ * Hide menu dropdown
  */
-async function showBookmarksPanel() {
-  await showBookmarksDropdown();
+function hideMenu() {
+  menuDropdown.classList.remove("show");
 }
 
 /**
@@ -543,7 +528,6 @@ async function loadSite(input, pushHistory = true) {
     urlInput.value = `${target.host}${target.route}`;
     setStatus(`✓ Loaded ${target.host}${target.route}`);
     updateNavigationButtons();
-    await updateBookmarkButton();
 
     // Record successful load performance
     const loadEndTime = performance.now();
@@ -727,8 +711,37 @@ backBtn.addEventListener("click", () => navigateRelative(-1));
 forwardBtn.addEventListener("click", () => navigateRelative(1));
 reloadBtn.addEventListener("click", reload);
 
-// Bookmark button - show bookmarks dropdown
-bookmarkBtn.addEventListener("click", showBookmarksPanel);
+// Menu button
+menuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (menuDropdown.classList.contains("show")) {
+    hideMenu();
+  } else {
+    hideBookmarksDropdown();
+    showMenu();
+  }
+});
+
+// Menu items
+menuHome.addEventListener("click", () => {
+  window.location.href = chrome.runtime.getURL("home.html");
+  hideMenu();
+});
+
+menuHistory.addEventListener("click", () => {
+  window.location.href = chrome.runtime.getURL("history.html");
+  hideMenu();
+});
+
+menuBookmarks.addEventListener("click", () => {
+  window.location.href = chrome.runtime.getURL("bookmarks.html");
+  hideMenu();
+});
+
+menuSettings.addEventListener("click", () => {
+  window.location.href = chrome.runtime.getURL("settings.html");
+  hideMenu();
+});
 
 // Bookmarks dropdown
 closeBookmarksDropdown.addEventListener("click", hideBookmarksDropdown);
@@ -765,8 +778,7 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
     setStatus(`✓ Bookmarked`);
     logger.info("Bookmark added from dropdown", { url: currentUrl });
     
-    // Update button state and reload dropdown
-    await updateBookmarkButton();
+    // Reload dropdown
     await loadBookmarksDropdown();
   } catch (e) {
     logger.error("Failed to add bookmark", e);
@@ -780,16 +792,17 @@ manageBookmarksBtn.addEventListener("click", () => {
   hideBookmarksDropdown();
 });
 
-// Close dropdown when clicking outside
+// Close dropdowns when clicking outside
 document.addEventListener("click", (e) => {
-  if (!bookmarksDropdown.contains(e.target) && e.target !== bookmarkBtn && !bookmarkBtn.contains(e.target)) {
+  // Close menu dropdown
+  if (!menuDropdown.contains(e.target) && e.target !== menuBtn && !menuBtn.contains(e.target)) {
+    hideMenu();
+  }
+  
+  // Close bookmarks dropdown
+  if (!bookmarksDropdown.contains(e.target)) {
     hideBookmarksDropdown();
   }
-});
-
-// Settings button
-settingsBtn.addEventListener("click", () => {
-  window.location.href = chrome.runtime.getURL("settings.html");
 });
 
 // Initialize sandbox iframe

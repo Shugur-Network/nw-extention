@@ -66,8 +66,12 @@ function buildTarget(browser) {
   const uiFiles = [
     "popup.html",
     "popup.js",
+    "home.html",
+    "home.js",
     "viewer.html",
     "viewer.js",
+    "history.html",
+    "history.js",
     "bookmarks.html",
     "bookmarks.js",
     "settings.html",

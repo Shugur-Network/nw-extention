@@ -477,6 +477,16 @@ export class PerformanceMonitor {
       2
     );
   }
+
+  /**
+   * Clear all history
+   * @returns {Promise<void>}
+   */
+  async clearHistory() {
+    await this.init();
+    this.loadMetrics = [];
+    await this._save();
+  }
 }
 
 // Export singleton instance

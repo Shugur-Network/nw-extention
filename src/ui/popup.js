@@ -1,8 +1,8 @@
 const browserAPI = typeof browser !== "undefined" ? browser : chrome;
 
-// Open viewer
+// Open home page
 document.getElementById("openViewer").addEventListener("click", () => {
-  const viewerUrl = browserAPI.runtime.getURL("viewer.html");
-  browserAPI.tabs.create({ url: viewerUrl });
+  const homeUrl = browserAPI.runtime.getURL("home.html");
+  browserAPI.tabs.create({ url: homeUrl });
   window.close();
 });
