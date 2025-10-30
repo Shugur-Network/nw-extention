@@ -162,7 +162,7 @@ export class Analytics {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          version: "1.0.0",
+          version: "1.1.0",
           events,
         }),
       });
