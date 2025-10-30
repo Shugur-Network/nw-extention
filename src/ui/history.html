@@ -6,244 +6,227 @@
     <title>History - Nostr Web Browser</title>
     <style>
       * {
+        box-sizing: border-box;
         margin: 0;
         padding: 0;
-        box-sizing: border-box;
       }
-
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
-        background: #ffffff;
+          sans-serif;
+        font-size: 14px;
+        background: #fff;
         color: #0a0a0a;
-        min-height: 100vh;
+        line-height: 1.5;
       }
-
       .container {
-        max-width: 1000px;
+        max-width: 900px;
         margin: 0 auto;
-        padding: 40px 20px;
+        padding: 32px 24px;
       }
-
       .header {
         margin-bottom: 32px;
       }
-
       .back-link {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        color: #667eea;
+        gap: 6px;
+        color: #666;
         text-decoration: none;
-        font-size: 14px;
+        font-size: 13px;
         margin-bottom: 16px;
-        transition: opacity 0.2s;
+        transition: color 0.15s;
       }
-
       .back-link:hover {
-        opacity: 0.7;
+        color: #0a0a0a;
       }
-
       h1 {
-        font-size: 32px;
+        font-size: 24px;
         font-weight: 600;
         margin-bottom: 8px;
+        letter-spacing: -0.02em;
       }
-
       .subtitle {
-        color: #666;
         font-size: 14px;
+        color: #666;
       }
-
       .stats {
         display: flex;
-        gap: 32px;
+        gap: 16px;
         margin-bottom: 24px;
-        padding: 20px;
+        padding: 16px;
         background: #fafafa;
         border-radius: 12px;
         border: 1px solid #e8e8e8;
       }
-
       .stat {
         text-align: center;
       }
-
       .stat-value {
         font-size: 24px;
         font-weight: 600;
+        color: #0a0a0a;
         display: block;
-        margin-bottom: 4px;
       }
-
       .stat-label {
-        font-size: 13px;
-        color: #666;
+        font-size: 12px;
+        color: #999;
+        margin-top: 4px;
       }
-
       .toolbar {
         display: flex;
         gap: 12px;
         margin-bottom: 24px;
         flex-wrap: wrap;
       }
-
       .search-input {
         flex: 1;
-        min-width: 200px;
-        padding: 10px 16px;
+        min-width: 250px;
+        padding: 10px 14px;
+        background: #fafafa;
         border: 1px solid #e8e8e8;
         border-radius: 8px;
-        font-size: 14px;
-        transition: all 0.2s;
-      }
-
-      .search-input:focus {
         outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
-      .button {
-        padding: 10px 20px;
-        background: #0a0a0a;
-        color: #ffffff;
-        border: none;
-        border-radius: 8px;
         font-size: 14px;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-weight: 500;
+        transition: all 0.15s ease;
       }
-
-      .button:hover {
-        opacity: 0.9;
+      .search-input:focus {
+        border-color: #0a0a0a;
+        background: #ffffff;
       }
-
-      .button.secondary {
+      .button {
+        padding: 10px 18px;
         background: #fafafa;
         color: #0a0a0a;
-        border: 1px solid #e0e0e0;
-      }
-
-      .button.danger {
-        background: #ff3b30;
-        color: white;
-      }
-
-      .history-list {
         border: 1px solid #e8e8e8;
-        border-radius: 12px;
-        background: #fafafa;
-        overflow: hidden;
-      }
-
-      .history-item {
-        padding: 16px 20px;
-        border-bottom: 1px solid #e8e8e8;
-        cursor: pointer;
-        transition: background 0.2s;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-      }
-
-      .history-item:last-child {
-        border-bottom: none;
-      }
-
-      .history-item:hover {
-        background: #f5f5f5;
-      }
-
-      .history-icon {
-        width: 40px;
-        height: 40px;
         border-radius: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 600;
-        font-size: 18px;
-        flex-shrink: 0;
-      }
-
-      .history-info {
-        flex: 1;
-        min-width: 0;
-      }
-
-      .history-title {
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 500;
-        margin-bottom: 4px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .history-url {
-        font-size: 13px;
-        color: #666;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .history-meta {
-        font-size: 12px;
-        color: #999;
-        text-align: right;
-        flex-shrink: 0;
-      }
-
-      .history-delete {
-        padding: 6px 12px;
-        background: transparent;
-        border: 1px solid #e8e8e8;
-        border-radius: 6px;
-        color: #ff3b30;
         cursor: pointer;
-        font-size: 12px;
-        transition: all 0.2s;
-        flex-shrink: 0;
+        transition: all 0.15s ease;
+        white-space: nowrap;
       }
-
-      .history-delete:hover {
+      .button:hover {
+        background: #f0f0f0;
+        border-color: #d8d8d8;
+      }
+      .button.active {
+        background: #0a0a0a;
+        color: #fff;
+        border-color: #0a0a0a;
+      }
+      .button.danger {
+        color: #ff3b30;
+      }
+      .button.danger:hover {
         background: #fff7f7;
         border-color: #ff3b30;
       }
-
+      /* Bookmark (history) grid & card styles */
+      .list {
+        width: 100%;
+        max-width: 100%;
+      }
+      .list-item {
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        height: 56px;
+        width: 100%;
+        border-bottom: 1px solid #ededed;
+        background: transparent;
+        transition: background 0.15s;
+        position: relative;
+      }
+      .list-item:hover {
+        background: #f5f5f5;
+      }
+      .favicon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        color: #666;
+        font-weight: 500;
+        margin: 0 18px 0 0;
+      }
+      .list-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .list-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #0a0a0a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .list-url {
+        font-size: 12px;
+        color: #999;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .list-meta {
+        font-size: 11px;
+        color: #999;
+        text-align: right;
+        margin-left: 24px;
+        white-space: nowrap;
+      }
+      .delete-btn {
+        position: relative;
+        margin-left: 20px;
+        background: none;
+        border: none;
+        color: #bbb;
+        font-size: 18px;
+        border-radius: 4px;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .list-item:hover .delete-btn {
+        opacity: 1;
+      }
+      .delete-btn:hover {
+        color: #ff3b30;
+        background: #fff0f0;
+      }
       .empty-state {
         text-align: center;
-        padding: 60px 20px;
+        padding: 56px 20px;
+        color: #999;
       }
-
       .empty-title {
         font-size: 18px;
         font-weight: 600;
+        color: #0a0a0a;
         margin-bottom: 8px;
       }
-
       .empty-text {
-        color: #666;
         font-size: 14px;
-        line-height: 1.5;
+        line-height: 1.6;
       }
-
       .loading {
         text-align: center;
         padding: 40px;
-        color: #666;
+        color: #999;
       }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="header">
-        <a href="viewer.html" class="back-link">← Back to Browser</a>
+        <a href="viewer.html" class="back-link">← Back</a>
         <h1>History</h1>
         <div class="subtitle">Your browsing history</div>
       </div>
@@ -251,11 +234,11 @@
       <div class="stats" id="statsSection">
         <div class="stat">
           <span class="stat-value" id="totalVisits">0</span>
-          <span class="stat-label">Total Visits</span>
+          <span class="stat-label">visits</span>
         </div>
         <div class="stat">
           <span class="stat-value" id="uniqueSites">0</span>
-          <span class="stat-label">Sites</span>
+          <span class="stat-label">sites</span>
         </div>
       </div>
 
@@ -280,4 +263,3 @@
     <script src="history.js" type="module"></script>
   </body>
 </html>
-

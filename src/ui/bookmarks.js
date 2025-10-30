@@ -65,14 +65,7 @@ async function loadBookmarks() {
       return;
     }
 
-    // Render bookmarks grid
-    bookmarksContainer.innerHTML = `<div class="bookmarks-grid" id="bookmarksGrid"></div>`;
-    const grid = document.getElementById("bookmarksGrid");
-
-    for (const bookmark of allBookmarks) {
-      const card = createBookmarkCard(bookmark);
-      grid.appendChild(card);
-    }
+    loadBookmarksList(allBookmarks);
 
     logger.info("Bookmarks loaded", { count: allBookmarks.length });
   } catch (e) {
@@ -86,72 +79,43 @@ async function loadBookmarks() {
   }
 }
 
-/**
- * Create a bookmark card element
- */
-function createBookmarkCard(bookmark) {
-  const card = document.createElement("div");
-  card.className = "bookmark-card";
+function loadBookmarksList(bookmarksArr) {
+  bookmarksContainer.innerHTML = '<div class="list" id="bookmarksList"></div>';
+  const list = document.getElementById("bookmarksList");
+  for (const bm of bookmarksArr) {
+    list.appendChild(createBookmarkListItem(bm));
+  }
+}
 
-  // Get first letter for favicon fallback
+function createBookmarkListItem(bookmark) {
+  const row = document.createElement("div");
+  row.className = "list-item";
   const firstLetter = (bookmark.title || bookmark.host || "N")[0].toUpperCase();
-
-  // Format dates
-  const createdDate = new Date(bookmark.createdAt).toLocaleDateString();
-  const lastVisited = bookmark.lastVisited
-    ? new Date(bookmark.lastVisited).toLocaleDateString()
-    : "Never";
-
-  card.innerHTML = `
-    <button class="bookmark-delete" title="Delete bookmark">×</button>
-    <div class="bookmark-header">
-      <div class="bookmark-favicon">${
-        bookmark.favicon
-          ? `<img src="${bookmark.favicon}" width="40" height="40" style="border-radius: 8px;">`
-          : firstLetter
-      }</div>
-      <div class="bookmark-info">
-        <div class="bookmark-title">${escapeHtml(
-          bookmark.title || bookmark.host
-        )}</div>
-        <div class="bookmark-url">${escapeHtml(bookmark.host)}${escapeHtml(
-    bookmark.route || ""
-  )}</div>
-      </div>
+  const lastVisited = bookmark.lastVisited ? (new Date(bookmark.lastVisited)).toLocaleDateString() : "Never";
+  row.innerHTML = `
+    <div class="favicon">${bookmark.favicon ? `<img src="${bookmark.favicon}" width="32" height="32" style="border-radius:6px;">` : firstLetter}</div>
+    <div class="list-info">
+      <div class="list-title">${escapeHtml(bookmark.title || bookmark.host)}</div>
+      <div class="list-url">${escapeHtml(bookmark.host)}${escapeHtml(bookmark.route || "")}</div>
     </div>
-    <div class="bookmark-meta">
-      Added: ${createdDate} · Last visited: ${lastVisited}
-    </div>
+    <div class="list-meta">Last visited: ${lastVisited}</div>
+    <button class="delete-btn" title="Delete bookmark">×</button>
   `;
-
-  // Click to open
-  card.addEventListener("click", (e) => {
-    // Don't open if clicking delete button
-    if (e.target.classList.contains("bookmark-delete")) return;
-
-    const viewerUrl = browserAPI.runtime.getURL(
-      `viewer.html?url=${encodeURIComponent(bookmark.url)}`
-    );
+  row.addEventListener("click", e => {
+    if (e.target.classList.contains("delete-btn")) return;
+    const viewerUrl = browserAPI.runtime.getURL(`viewer.html?url=${encodeURIComponent(bookmark.url)}`);
     browserAPI.tabs.create({ url: viewerUrl });
   });
-
-  // Delete button
-  const deleteBtn = card.querySelector(".bookmark-delete");
+  const deleteBtn = row.querySelector(".delete-btn");
   deleteBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-
-    if (
-      confirm(
-        `Delete bookmark for "${bookmark.title || bookmark.host}"?\n\nThis cannot be undone.`
-      )
-    ) {
+    if (confirm(`Delete bookmark for "${bookmark.title || bookmark.host}"?\n\nThis cannot be undone.`)) {
       await bookmarks.remove(bookmark.url);
       logger.info("Bookmark deleted", { url: bookmark.url });
       loadBookmarks();
     }
   });
-
-  return card;
+  return row;
 }
 
 /**

@@ -262,6 +262,7 @@ export class PerformanceMonitor {
             timestamp: slowestLoad.timestamp,
           }
         : null,
+      recentLoads: this.loadMetrics.slice().reverse(), // Return all loads in reverse chronological order
     };
   }
 
@@ -486,6 +487,41 @@ export class PerformanceMonitor {
     await this.init();
     this.loadMetrics = [];
     await this._save();
+  }
+
+  /**
+   * Delete specific history entries by URL pattern
+   * @param {string} url - URL to match
+   * @param {string} host - Host to match
+   * @param {string} route - Route to match
+   * @param {number} dayKey - Day timestamp to match
+   * @returns {Promise<number>} Number of entries deleted
+   */
+  async deleteHistoryEntry(url, host, route, dayKey) {
+    await this.init();
+    const before = this.loadMetrics.length;
+    
+    // Remove all entries matching the URL, host, route, and day
+    this.loadMetrics = this.loadMetrics.filter(item => {
+      // Keep if it doesn't match
+      if (item.host !== host) return true;
+      if (item.route !== route) return true;
+      if (!item.startTime) return true;
+      
+      // Get the day key for this item
+      const itemDay = new Date(item.startTime);
+      itemDay.setHours(0, 0, 0, 0);
+      const itemDayKey = itemDay.getTime();
+      
+      if (itemDayKey !== dayKey) return true;
+      
+      // This matches - remove it
+      return false;
+    });
+    
+    const deleted = before - this.loadMetrics.length;
+    await this._save();
+    return deleted;
   }
 }
 

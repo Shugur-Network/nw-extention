@@ -16,9 +16,12 @@ const goBtn = document.getElementById("goBtn");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const reloadBtn = document.getElementById("reloadBtn");
+const bookmarkBtn = document.getElementById("bookmarkBtn");
 const menuBtn = document.getElementById("menuBtn");
-const statusEl = document.getElementById("status");
-const frameContainer = document.getElementById("contentFrame");
+const progressBar = document.getElementById("progressBar");
+const contentWrapper = document.getElementById("contentWrapper");
+const tabsContainer = document.getElementById("tabsContainer");
+const newTabBtn = document.getElementById("newTabBtn");
 const menuDropdown = document.getElementById("menuDropdown");
 const menuHome = document.getElementById("menuHome");
 const menuHistory = document.getElementById("menuHistory");
@@ -31,49 +34,185 @@ const closeBookmarksDropdown = document.getElementById("closeBookmarksDropdown")
 const addBookmarkFromDropdownBtn = document.getElementById("addBookmarkFromDropdownBtn");
 const manageBookmarksBtn = document.getElementById("manageBookmarksBtn");
 
-// Sandboxed iframe reference
-let sandboxFrame = null;
-let sandboxReady = false;
-let sandboxReadyResolve = null;
+/**
+ * Tab class - Represents a single browser tab
+ */
+class Tab {
+  constructor(id) {
+    this.id = id;
+    this.title = "New Tab";
+    this.url = null;
+    this.domain = null;
+    this.route = null;
+    this.sandboxFrame = null;
+    this.sandboxReady = false;
+    this.sandboxReadyResolve = null;
+    this.navigationHistory = [];
+    this.historyIndex = -1;
+    this.element = null;
+  }
+}
 
-// Current site state
-let currentDomain = null;
-let currentRoute = null;
+/**
+ * TabManager class - Manages all browser tabs
+ */
+class TabManager {
+  constructor() {
+    this.tabs = [];
+    this.activeTabId = null;
+    this.nextTabId = 1;
+  }
 
-// Navigation state
-const navigationHistory = [];
-let historyIndex = -1;
-
-// Set up message listener for sandbox ready event BEFORE creating iframe
-window.addEventListener("message", (event) => {
-  if (event.data?.cmd === "sandboxReady") {
-    sandboxReady = true;
-    if (sandboxReadyResolve) {
-      sandboxReadyResolve();
-      sandboxReadyResolve = null;
-    }
-    logger.info("Sandbox ready");
-  } else if (event.data?.cmd === "navigate") {
-    // Handle navigation request from sandboxed iframe
-    const route = event.data.route;
-    logger.info("Navigation requested", { route });
-
-    if (currentDomain) {
-      // Navigate to the new route on the same domain
-      // loadSite expects "domain/route" format
-      const fullPath =
-        route === "/" ? currentDomain : `${currentDomain}${route}`;
-      logger.debug("Navigating to route", {
-        fullPath,
-        domain: currentDomain,
-        route,
-      });
-      loadSite(fullPath);
+  createTab(url = null) {
+    const tab = new Tab(this.nextTabId++);
+    this.tabs.push(tab);
+    this.createTabElement(tab);
+    this.createTabContent(tab);
+    
+    if (url) {
+      this.switchToTab(tab.id);
+      loadSiteInTab(tab, url);
     } else {
-      logger.warn("Navigation requested but currentDomain is not set");
+      this.switchToTab(tab.id);
+    }
+    
+    logger.info("Tab created", { id: tab.id, url });
+    return tab;
+  }
+
+  createTabElement(tab) {
+    const tabEl = document.createElement("div");
+    tabEl.className = "tab";
+    tabEl.dataset.tabId = tab.id;
+    
+    tabEl.innerHTML = `
+      <span class="tab-title">${tab.title}</span>
+      <button class="tab-close" title="Close tab">×</button>
+    `;
+    
+    const closeBtn = tabEl.querySelector(".tab-close");
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeTab(tab.id);
+    });
+    
+    tabEl.addEventListener("click", () => {
+      this.switchToTab(tab.id);
+    });
+    
+    tabsContainer.appendChild(tabEl);
+    tab.element = tabEl;
+  }
+
+  createTabContent(tab) {
+    // Create sandbox iframe for this tab
+    const frame = document.createElement("iframe");
+    frame.id = `sandbox-${tab.id}`;
+    frame.src = "sandbox.html";
+    frame.sandbox = "allow-scripts";
+    frame.className = "content-frame hidden";
+    frame.style.width = "100%";
+    frame.style.height = "100%";
+    
+    contentWrapper.appendChild(frame);
+    tab.sandboxFrame = frame;
+    
+    // Set up message listener for this tab's sandbox
+    const messageHandler = (event) => {
+      if (event.source !== frame.contentWindow) return;
+      
+      if (event.data?.cmd === "sandboxReady") {
+        tab.sandboxReady = true;
+        if (tab.sandboxReadyResolve) {
+          tab.sandboxReadyResolve();
+          tab.sandboxReadyResolve = null;
+        }
+        logger.info("Sandbox ready for tab", { tabId: tab.id });
+      } else if (event.data?.cmd === "navigate") {
+        if (tab.id === this.activeTabId && tab.domain) {
+          const route = event.data.route;
+          const fullPath = route === "/" ? tab.domain : `${tab.domain}${route}`;
+          loadSiteInTab(tab, fullPath);
+        }
+      }
+    };
+    
+    window.addEventListener("message", messageHandler);
+  }
+
+  switchToTab(tabId) {
+    const tab = this.getTab(tabId);
+    if (!tab) return;
+    
+    // Hide all tabs and frames
+    this.tabs.forEach(t => {
+      t.element?.classList.remove("active");
+      t.sandboxFrame?.classList.add("hidden");
+    });
+    
+    // Show selected tab
+    tab.element?.classList.add("active");
+    tab.sandboxFrame?.classList.remove("hidden");
+    
+    this.activeTabId = tabId;
+    
+    // Update UI
+    urlInput.value = tab.url || "";
+    updateNavigationButtons(tab);
+    
+    logger.info("Switched to tab", { tabId });
+  }
+
+  closeTab(tabId) {
+    const tabIndex = this.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) return;
+    
+    const tab = this.tabs[tabIndex];
+    
+    // Remove DOM elements
+    tab.element?.remove();
+    tab.sandboxFrame?.remove();
+    
+    // Remove from array
+    this.tabs.splice(tabIndex, 1);
+    
+    // If this was the active tab, switch to another
+    if (this.activeTabId === tabId) {
+      if (this.tabs.length > 0) {
+        // Switch to previous tab or first tab
+        const newTab = this.tabs[Math.max(0, tabIndex - 1)];
+        this.switchToTab(newTab.id);
+      } else {
+        // No tabs left, create a new one
+        this.createTab();
+      }
+    }
+    
+    logger.info("Tab closed", { tabId });
+  }
+
+  getActiveTab() {
+    return this.tabs.find(t => t.id === this.activeTabId);
+  }
+
+  getTab(tabId) {
+    return this.tabs.find(t => t.id === tabId);
+  }
+
+  updateTabTitle(tabId, title) {
+    const tab = this.getTab(tabId);
+    if (!tab) return;
+    
+    tab.title = title || "New Tab";
+    const titleEl = tab.element?.querySelector(".tab-title");
+    if (titleEl) {
+      titleEl.textContent = tab.title;
     }
   }
-});
+}
+
+// Global tab manager
+const tabManager = new TabManager();
 
 /**
  * Assemble complete HTML document with inline CSS and JS
@@ -188,27 +327,88 @@ function assembleHTML(bundle) {
 }
 
 /**
- * Update UI status message
- * @param {string} text - Status message
- * @param {boolean} isError - Whether this is an error message
+ * Show loading progress bar
  */
-function setStatus(text, isError = false) {
-  statusEl.textContent = text || "";
-  statusEl.className = "status" + (isError ? " err" : "");
+function showLoading() {
+  progressBar.classList.add("loading");
+}
 
-  if (text && !isError) {
-    setTimeout(() => setStatus(""), CONFIG.STATUS_TIMEOUT);
+/**
+ * Hide loading progress bar
+ */
+function hideLoading() {
+  progressBar.classList.remove("loading");
+}
+
+/**
+ * Add loading spinner to tab
+ * @param {Tab} tab - The tab to add spinner to
+ */
+function showTabLoading(tab) {
+  if (!tab || !tab.element) return;
+  
+  const titleEl = tab.element.querySelector(".tab-title");
+  if (!titleEl) return;
+  
+  // Check if spinner already exists
+  if (tab.element.querySelector(".tab-spinner")) return;
+  
+  const spinner = document.createElement("div");
+  spinner.className = "tab-spinner";
+  titleEl.parentElement.insertBefore(spinner, titleEl);
+}
+
+/**
+ * Remove loading spinner from tab
+ * @param {Tab} tab - The tab to remove spinner from
+ */
+function hideTabLoading(tab) {
+  if (!tab || !tab.element) return;
+  
+  const spinner = tab.element.querySelector(".tab-spinner");
+  if (spinner) {
+    spinner.remove();
   }
 }
 
 /**
  * Update navigation button states based on history
  */
-function updateNavigationButtons() {
-  backBtn.disabled = historyIndex <= 0;
+function updateNavigationButtons(tab) {
+  if (!tab) {
+    backBtn.disabled = true;
+    forwardBtn.disabled = true;
+    reloadBtn.disabled = true;
+    bookmarkBtn.disabled = true;
+    return;
+  }
+  backBtn.disabled = tab.historyIndex <= 0;
   forwardBtn.disabled =
-    historyIndex < 0 || historyIndex >= navigationHistory.length - 1;
-  reloadBtn.disabled = historyIndex < 0;
+    tab.historyIndex < 0 || tab.historyIndex >= tab.navigationHistory.length - 1;
+  reloadBtn.disabled = tab.historyIndex < 0;
+  bookmarkBtn.disabled = !tab.url;
+  
+  // Update bookmark button appearance based on whether page is bookmarked
+  updateBookmarkButton(tab);
+}
+
+/**
+ * Update bookmark button appearance
+ */
+async function updateBookmarkButton(tab) {
+  if (!tab || !tab.url) {
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
+    return;
+  }
+  
+  const isBookmarked = await bookmarks.has(tab.url);
+  if (isBookmarked) {
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark-filled");
+    bookmarkBtn.title = "Remove bookmark";
+  } else {
+    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
+    bookmarkBtn.title = "Bookmark this page";
+  }
 }
 
 /**
@@ -408,44 +608,29 @@ function getUserFriendlyError(error) {
 /**
  * Initialize sandboxed iframe for rendering
  */
-function initSandbox() {
-  sandboxFrame = document.createElement("iframe");
-  sandboxFrame.id = "sandboxFrame";
-  sandboxFrame.src = chrome.runtime.getURL("sandbox.html");
-  // Note: allow-same-origin is removed for security (prevents sandbox escape)
-  // The content can still communicate via postMessage
-  sandboxFrame.sandbox = "allow-scripts allow-forms allow-popups allow-modals";
-  sandboxFrame.style.cssText =
-    "width: 100%; height: 100%; border: none; display: block;";
-
-  frameContainer.innerHTML = ""; // Clear placeholder
-  frameContainer.appendChild(sandboxFrame);
-
-  logger.info("Sandbox iframe created");
-}
-
 /**
- * Wait for sandbox to be ready
+ * Wait for a tab's sandbox to be ready
+ * @param {Tab} tab - The tab to wait for
  * @returns {Promise<void>}
  */
-function waitForSandbox() {
+function waitForTabSandbox(tab) {
   return new Promise((resolve) => {
-    if (sandboxReady) {
+    if (tab.sandboxReady) {
       resolve();
       return;
     }
-
-    // Store resolve function for the global message listener
-    sandboxReadyResolve = resolve;
+    // Store resolve function for the tab's message listener
+    tab.sandboxReadyResolve = resolve;
   });
 }
 
 /**
- * Load a Nostr Web site
+ * Load a Nostr Web site into a specific tab
+ * @param {Tab} tab - The tab to load into
  * @param {string} input - URL input
  * @param {boolean} pushHistory - Whether to add to history
  */
-async function loadSite(input, pushHistory = true) {
+async function loadSiteInTab(tab, input, pushHistory = true) {
   let target;
 
   // Validate and parse URL
@@ -453,16 +638,18 @@ async function loadSite(input, pushHistory = true) {
     target = validateAndParseURL(input);
   } catch (e) {
     logger.warn("URL validation failed", e);
-    const friendlyError = getUserFriendlyError(e);
-    setStatus(`✗ ${friendlyError.message}`, true);
     return;
   }
 
-  logger.info("Loading site", target);
-  setStatus("Loading…");
+  logger.info("Loading site in tab", { tabId: tab.id, ...target });
+  
+  // Show loading indicators
+  showLoading();
+  showTabLoading(tab);
 
   // Start performance tracking
-  const loadStartTime = performance.now();
+  const loadStartTime = Date.now(); // Absolute timestamp for history
+  const perfStartTime = performance.now(); // Relative time for duration
 
   try {
     // Request content from service worker
@@ -478,21 +665,22 @@ async function loadSite(input, pushHistory = true) {
 
     logger.info("Content loaded from service worker");
 
-    // Ensure sandbox is ready
-    await waitForSandbox();
+    // Ensure tab's sandbox is ready
+    await waitForTabSandbox(tab);
 
     // Assemble full HTML with inline scripts (works in sandbox!)
     const fullHTML = assembleHTML(response.result.doc);
 
     logger.debug("HTML assembled for rendering", {
+      tabId: tab.id,
       host: target.host,
       route: target.route,
       htmlLength: fullHTML.length,
       preview: fullHTML.substring(0, 200),
     });
 
-    // Send to sandboxed iframe - inline scripts will work!
-    sandboxFrame.contentWindow.postMessage(
+    // Send to tab's sandboxed iframe - inline scripts will work!
+    tab.sandboxFrame.contentWindow.postMessage(
       {
         cmd: "render",
         html: fullHTML,
@@ -501,39 +689,52 @@ async function loadSite(input, pushHistory = true) {
     );
 
     logger.debug("Render command sent to sandbox", {
+      tabId: tab.id,
       host: target.host,
       route: target.route,
     });
 
-    // Update current site state
-    currentDomain = target.host;
-    currentRoute = target.route;
+    // Update tab state
+    tab.domain = target.host;
+    tab.route = target.route;
+    tab.url = `${target.host}${target.route}`;
+    
+    // Extract title from HTML (simple extraction)
+    const titleMatch = fullHTML.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1] : target.host;
+    tabManager.updateTabTitle(tab.id, title);
 
-    // Update navigation history
+    // Update navigation history for this tab
     if (pushHistory) {
       // Remove forward history when navigating to new page
-      navigationHistory.splice(historyIndex + 1);
-      navigationHistory.push({ host: target.host, route: target.route });
+      tab.navigationHistory.splice(tab.historyIndex + 1);
+      tab.navigationHistory.push({ host: target.host, route: target.route });
 
       // Limit history size
-      if (navigationHistory.length > CONFIG.MAX_HISTORY_SIZE) {
-        navigationHistory.shift();
-        historyIndex--;
+      if (tab.navigationHistory.length > CONFIG.MAX_HISTORY_SIZE) {
+        tab.navigationHistory.shift();
+        tab.historyIndex--;
       }
 
-      historyIndex = navigationHistory.length - 1;
+      tab.historyIndex = tab.navigationHistory.length - 1;
     }
 
-    // Update UI
-    urlInput.value = `${target.host}${target.route}`;
-    setStatus(`✓ Loaded ${target.host}${target.route}`);
-    updateNavigationButtons();
+    // Hide loading indicators
+    hideLoading();
+    hideTabLoading(tab);
+    
+    // Update UI if this is the active tab
+    if (tab.id === tabManager.activeTabId) {
+      urlInput.value = tab.url;
+      updateNavigationButtons(tab);
+    }
 
     // Record successful load performance
-    const loadEndTime = performance.now();
-    const totalTime = loadEndTime - loadStartTime;
+    const loadEndTime = Date.now(); // Absolute timestamp
+    const perfEndTime = performance.now(); // Relative time
+    const totalTime = perfEndTime - perfStartTime; // Duration in ms
     await performanceMonitor.recordLoad({
-      url: `${target.host}${target.route}`,
+      url: tab.url,
       host: target.host,
       route: target.route,
       startTime: loadStartTime,
@@ -543,18 +744,23 @@ async function loadSite(input, pushHistory = true) {
     });
 
     logger.info("Site loaded successfully", {
-      historyIndex,
-      historyLength: navigationHistory.length,
+      tabId: tab.id,
+      historyIndex: tab.historyIndex,
+      historyLength: tab.navigationHistory.length,
       loadTime: Math.round(totalTime) + "ms",
     });
   } catch (e) {
     logger.error("Failed to load site", e);
+    
+    // Hide loading indicators
+    hideLoading();
+    hideTabLoading(tab);
+    
     const normalized = normalizeError(e);
     const friendlyError = getUserFriendlyError(normalized);
-    setStatus(`✗ ${friendlyError.message}`, true);
 
     // Show error in sandbox iframe
-    if (sandboxFrame) {
+    if (tab.sandboxFrame && tab.sandboxReady) {
       const errorHTML = `
         <!DOCTYPE html>
         <html>
@@ -631,15 +837,16 @@ async function loadSite(input, pushHistory = true) {
         </html>
       `;
 
-      sandboxFrame.contentWindow.postMessage(
+      tab.sandboxFrame.contentWindow.postMessage(
         { cmd: "render", html: errorHTML },
         "*"
       );
     }
 
     // Record failed load performance
-    const loadEndTime = performance.now();
-    const totalTime = loadEndTime - loadStartTime;
+    const loadEndTime = Date.now(); // Absolute timestamp
+    const perfEndTime = performance.now(); // Relative time
+    const totalTime = perfEndTime - perfStartTime; // Duration in ms
     await performanceMonitor.recordLoad({
       url: `${target.host}${target.route}`,
       host: target.host,
@@ -660,41 +867,48 @@ async function loadSite(input, pushHistory = true) {
  * @param {number} delta - -1 for back, +1 for forward
  */
 function navigateRelative(delta) {
-  const newIndex = historyIndex + delta;
+  const tab = tabManager.getActiveTab();
+  if (!tab) return;
 
-  if (newIndex < 0 || newIndex >= navigationHistory.length) {
+  const newIndex = tab.historyIndex + delta;
+
+  if (newIndex < 0 || newIndex >= tab.navigationHistory.length) {
     logger.warn("Navigation out of bounds", {
       newIndex,
-      historyLength: navigationHistory.length,
+      historyLength: tab.navigationHistory.length,
     });
     return;
   }
 
-  historyIndex = newIndex;
-  const entry = navigationHistory[historyIndex];
+  tab.historyIndex = newIndex;
+  const entry = tab.navigationHistory[tab.historyIndex];
   urlInput.value = `${entry.host}${entry.route}`;
-  loadSite(urlInput.value, false);
+  loadSiteInTab(tab, urlInput.value, false);
 }
 
 /**
  * Reload current page
  */
 function reload() {
-  if (historyIndex < 0) {
+  const tab = tabManager.getActiveTab();
+  if (!tab || tab.historyIndex < 0) {
     logger.warn("No page to reload");
     return;
   }
 
-  const entry = navigationHistory[historyIndex];
+  const entry = tab.navigationHistory[tab.historyIndex];
   logger.info("Reloading page", entry);
-  loadSite(`${entry.host}${entry.route}`, false);
+  loadSiteInTab(tab, `${entry.host}${entry.route}`, false);
 }
 
 // Event listeners
 goBtn.addEventListener("click", () => {
   const input = urlInput.value.trim();
   if (input) {
-    loadSite(input);
+    const tab = tabManager.getActiveTab();
+    if (tab) {
+      loadSiteInTab(tab, input);
+    }
   }
 });
 
@@ -702,7 +916,10 @@ urlInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     const input = urlInput.value.trim();
     if (input) {
-      loadSite(input);
+      const tab = tabManager.getActiveTab();
+      if (tab) {
+        loadSiteInTab(tab, input);
+      }
     }
   }
 });
@@ -710,6 +927,51 @@ urlInput.addEventListener("keydown", (e) => {
 backBtn.addEventListener("click", () => navigateRelative(-1));
 forwardBtn.addEventListener("click", () => navigateRelative(1));
 reloadBtn.addEventListener("click", reload);
+
+// Bookmark button
+bookmarkBtn.addEventListener("click", async () => {
+  const tab = tabManager.getActiveTab();
+  if (!tab || !tab.domain) {
+    alert("Please load a page first before bookmarking.");
+    return;
+  }
+
+  const currentUrl = tab.url;
+  const isBookmarked = await bookmarks.has(currentUrl);
+
+  if (isBookmarked) {
+    // Remove bookmark
+    if (confirm(`Remove bookmark for "${tab.title || tab.domain}"?`)) {
+      try {
+        await bookmarks.remove(currentUrl);
+        logger.info("Bookmark removed", { url: currentUrl });
+        await updateBookmarkButton(tab);
+      } catch (e) {
+        logger.error("Failed to remove bookmark", e);
+        alert(`Failed to remove bookmark: ${e.message}`);
+      }
+    }
+  } else {
+    // Add bookmark
+    try {
+      const bookmark = {
+        url: currentUrl,
+        host: tab.domain,
+        route: tab.route,
+        title: tab.title || tab.domain,
+        createdAt: Date.now(),
+        lastVisited: Date.now(),
+      };
+      
+      await bookmarks.add(bookmark);
+      logger.info("Bookmark added", { url: currentUrl });
+      await updateBookmarkButton(tab);
+    } catch (e) {
+      logger.error("Failed to add bookmark", e);
+      alert(`Failed to add bookmark: ${e.message}`);
+    }
+  }
+});
 
 // Menu button
 menuBtn.addEventListener("click", (e) => {
@@ -751,12 +1013,13 @@ bookmarksSearchInput.addEventListener("input", (e) => {
 
 // Add bookmark button in dropdown
 addBookmarkFromDropdownBtn.addEventListener("click", async () => {
-  if (!currentDomain) {
+  const tab = tabManager.getActiveTab();
+  if (!tab || !tab.domain) {
     alert("Please load a page first before bookmarking.");
     return;
   }
 
-  const currentUrl = `${currentDomain}${currentRoute}`;
+  const currentUrl = tab.url;
   const isBookmarked = await bookmarks.has(currentUrl);
 
   if (isBookmarked) {
@@ -767,18 +1030,17 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
   try {
     const bookmark = {
       url: currentUrl,
-      host: currentDomain,
-      route: currentRoute,
-      title: document.title || currentDomain,
+      host: tab.domain,
+      route: tab.route,
+      title: tab.title || tab.domain,
       createdAt: Date.now(),
       lastVisited: Date.now(),
     };
     
     await bookmarks.add(bookmark);
-    setStatus(`✓ Bookmarked`);
     logger.info("Bookmark added from dropdown", { url: currentUrl });
     
-    // Reload dropdown
+    // Reload dropdown to show the new bookmark
     await loadBookmarksDropdown();
   } catch (e) {
     logger.error("Failed to add bookmark", e);
@@ -805,18 +1067,60 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Initialize sandbox iframe
-initSandbox();
+// New tab button
+newTabBtn.addEventListener("click", () => {
+  tabManager.createTab();
+  urlInput.focus();
+});
 
-// Initialize
-updateNavigationButtons();
+// Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+  // Ctrl/Cmd+T - New tab
+  if ((e.ctrlKey || e.metaKey) && e.key === "t") {
+    e.preventDefault();
+    tabManager.createTab();
+    urlInput.focus();
+  }
+  
+  // Ctrl/Cmd+W - Close tab
+  if ((e.ctrlKey || e.metaKey) && e.key === "w") {
+    e.preventDefault();
+    const tab = tabManager.getActiveTab();
+    if (tab) {
+      tabManager.closeTab(tab.id);
+    }
+  }
+  
+  // Ctrl+Tab - Next tab
+  if (e.ctrlKey && e.key === "Tab" && !e.shiftKey) {
+    e.preventDefault();
+    const currentIndex = tabManager.tabs.findIndex(t => t.id === tabManager.activeTabId);
+    if (currentIndex >= 0 && currentIndex < tabManager.tabs.length - 1) {
+      tabManager.switchToTab(tabManager.tabs[currentIndex + 1].id);
+    } else if (currentIndex === tabManager.tabs.length - 1) {
+      // Wrap to first tab
+      tabManager.switchToTab(tabManager.tabs[0].id);
+    }
+  }
+  
+  // Ctrl+Shift+Tab - Previous tab
+  if (e.ctrlKey && e.key === "Tab" && e.shiftKey) {
+    e.preventDefault();
+    const currentIndex = tabManager.tabs.findIndex(t => t.id === tabManager.activeTabId);
+    if (currentIndex > 0) {
+      tabManager.switchToTab(tabManager.tabs[currentIndex - 1].id);
+    } else if (currentIndex === 0) {
+      // Wrap to last tab
+      tabManager.switchToTab(tabManager.tabs[tabManager.tabs.length - 1].id);
+    }
+  }
+});
 
-// Handle deep linking via URL parameter or default website
+// Initialize - Create first tab
 const urlParam = new URLSearchParams(window.location.search).get("url");
 if (urlParam) {
   logger.info("Loading from URL parameter", { url: urlParam });
-  urlInput.value = urlParam;
-  loadSite(urlParam);
+  tabManager.createTab(urlParam);
 } else {
   // Check for default website setting
   chrome.storage.local.get(["nweb_default_site"], (result) => {
@@ -824,9 +1128,10 @@ if (urlParam) {
       logger.info("Loading default website", {
         site: result.nweb_default_site,
       });
-      urlInput.value = result.nweb_default_site;
-      loadSite(result.nweb_default_site);
+      tabManager.createTab(result.nweb_default_site);
     } else {
+      // Create empty tab
+      tabManager.createTab();
       urlInput.focus();
     }
   });

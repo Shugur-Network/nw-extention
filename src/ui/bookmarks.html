@@ -129,124 +129,96 @@
         margin-top: 4px;
       }
 
-      .bookmarks-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 16px;
+      .list {
+        width: 100%;
+        max-width: 100%;
       }
-
-      .bookmark-card {
-        background: #fafafa;
-        border: 1px solid #e8e8e8;
-        border-radius: 12px;
-        padding: 16px;
-        cursor: pointer;
-        transition: all 0.15s ease;
+      .list-item {
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        height: 56px;
+        width: 100%;
+        border-bottom: 1px solid #ededed;
+        background: transparent;
+        transition: background 0.15s;
         position: relative;
       }
-
-      .bookmark-card:hover {
+      .list-item:hover {
         background: #f5f5f5;
-        border-color: #d8d8d8;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
       }
-
-      .bookmark-header {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 8px;
-      }
-
-      .bookmark-favicon {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
+      .favicon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
         background: #e0e0e0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
-        flex-shrink: 0;
+        font-size: 15px;
+        color: #666;
+        font-weight: 500;
+        margin: 0 18px 0 0;
       }
-
-      .bookmark-info {
+      .list-info {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
-
-      .bookmark-title {
+      .list-title {
         font-size: 15px;
         font-weight: 600;
         color: #0a0a0a;
-        margin-bottom: 4px;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
       }
-
-      .bookmark-url {
+      .list-url {
         font-size: 12px;
         color: #999;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
       }
-
-      .bookmark-meta {
+      .list-meta {
         font-size: 11px;
         color: #999;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid #e8e8e8;
+        text-align: right;
+        margin-left: 24px;
+        white-space: nowrap;
       }
-
-      .bookmark-delete {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        width: 24px;
-        height: 24px;
+      .delete-btn {
+        position: relative;
+        margin-left: 20px;
+        background: none;
         border: none;
-        background: transparent;
-        color: #999;
-        cursor: pointer;
+        color: #bbb;
+        font-size: 18px;
         border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        cursor: pointer;
         opacity: 0;
-        transition: all 0.15s;
+        transition: opacity 0.2s;
       }
-
-      .bookmark-card:hover .bookmark-delete {
+      .list-item:hover .delete-btn {
         opacity: 1;
       }
-
-      .bookmark-delete:hover {
-        background: #ff3b30;
-        color: #ffffff;
+      .delete-btn:hover {
+        color: #ff3b30;
+        background: #fff0f0;
       }
-
       .empty-state {
         text-align: center;
-        padding: 60px 20px;
+        padding: 56px 20px;
         color: #999;
       }
-
-      .empty-icon {
-        font-size: 64px;
-        margin-bottom: 16px;
-        opacity: 0.5;
-      }
-
       .empty-title {
         font-size: 18px;
         font-weight: 600;
         color: #0a0a0a;
         margin-bottom: 8px;
       }
-
       .empty-text {
         font-size: 14px;
         line-height: 1.6;
@@ -262,7 +234,7 @@
   <body>
     <div class="container">
       <div class="header">
-        <a href="viewer.html" class="back-link">← Back to Browser</a>
+        <a href="viewer.html" class="back-link">← Back</a>
         <h1>Bookmarks</h1>
         <div class="subtitle">Your saved Nostr Web sites</div>
       </div>
@@ -289,7 +261,12 @@
         <button class="button" id="sortByTitle">Sort by Title</button>
         <button class="button" id="exportBtn">Export</button>
         <button class="button" id="importBtn">Import</button>
-        <input type="file" id="importFile" accept=".json" style="display: none">
+        <input
+          type="file"
+          id="importFile"
+          accept=".json"
+          style="display: none"
+        />
         <button class="button danger" id="clearAll">Clear All</button>
       </div>
 
@@ -301,4 +278,3 @@
     <script src="bookmarks.js" type="module"></script>
   </body>
 </html>
-

@@ -248,23 +248,60 @@
         transform: scale(0.97);
       }
 
-      .status {
-        font-size: 13px;
-        color: var(--text-secondary);
-        white-space: nowrap;
+      /* Loading Progress Bar */
+      .progress-bar {
+        position: fixed;
+        top: 61px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: transparent;
+        z-index: 101;
+        overflow: hidden;
       }
 
-      .status.loading {
-        color: #0066ff;
+      .progress-bar.loading::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 30%;
+        background: linear-gradient(90deg, #0066ff, #00a0ff);
+        animation: progress-loading 1.5s ease-in-out infinite;
       }
 
-      .status.error {
-        color: #ff3b30;
+      @keyframes progress-loading {
+        0% {
+          left: -30%;
+        }
+        100% {
+          left: 100%;
+        }
+      }
+
+      /* Loading spinner in tab */
+      .tab-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid #e0e0e0;
+        border-top-color: #0066ff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        flex-shrink: 0;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
 
       .content-wrapper {
-        height: calc(100% - 61px);
+        height: calc(100% - 101px); /* toolbar(61px) + tab-bar(40px) */
         background: var(--bg);
+        position: relative;
       }
 
       .content-frame {
@@ -272,6 +309,13 @@
         height: 100%;
         border: 0;
         background: #fff;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .content-frame.hidden {
+        display: none;
       }
 
       .empty-state {
@@ -629,19 +673,26 @@
         <button id="goBtn" class="btn-go">Go</button>
       </div>
 
-      <span id="status" class="status"></span>
+      <button id="bookmarkBtn" class="btn" title="Bookmark this page">
+        <svg><use href="#icon-bookmark" /></svg>
+      </button>
 
       <button id="menuBtn" class="btn" title="Menu">
         <svg><use href="#icon-menu" /></svg>
       </button>
     </div>
 
+    <!-- Loading Progress Bar -->
+    <div class="progress-bar" id="progressBar"></div>
+
     <!-- Tab Bar -->
     <div class="tab-bar" id="tabBar">
       <div class="tabs-container" id="tabsContainer">
         <!-- Tabs will be added here dynamically -->
       </div>
-      <button class="new-tab-btn" id="newTabBtn" title="New tab (Ctrl+T)">+</button>
+      <button class="new-tab-btn" id="newTabBtn" title="New tab (Ctrl+T)">
+        +
+      </button>
     </div>
 
     <!-- Menu Dropdown -->
@@ -691,14 +742,8 @@
       </div>
     </div>
 
-    <div class="content-wrapper">
-      <div id="contentFrame" class="content-frame">
-        <div class="empty-state">
-          <svg class="empty-state-icon"><use href="#icon-globe" /></svg>
-          <div class="empty-state-title">Enter a Nostr Web domain to begin</div>
-          <div class="empty-state-desc">e.g., nweb.shugur.com</div>
-        </div>
-      </div>
+    <div class="content-wrapper" id="contentWrapper">
+      <!-- Tab content frames will be added here dynamically -->
     </div>
 
     <div class="footer">
