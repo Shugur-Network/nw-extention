@@ -91,25 +91,43 @@ function createBookmarkListItem(bookmark) {
   const row = document.createElement("div");
   row.className = "list-item";
   const firstLetter = (bookmark.title || bookmark.host || "N")[0].toUpperCase();
-  const lastVisited = bookmark.lastVisited ? (new Date(bookmark.lastVisited)).toLocaleDateString() : "Never";
+  const lastVisited = bookmark.lastVisited
+    ? new Date(bookmark.lastVisited).toLocaleDateString()
+    : "Never";
   row.innerHTML = `
-    <div class="favicon">${bookmark.favicon ? `<img src="${bookmark.favicon}" width="32" height="32" style="border-radius:6px;">` : firstLetter}</div>
+    <div class="favicon">${
+      bookmark.favicon
+        ? `<img src="${bookmark.favicon}" width="32" height="32" style="border-radius:6px;">`
+        : firstLetter
+    }</div>
     <div class="list-info">
-      <div class="list-title">${escapeHtml(bookmark.title || bookmark.host)}</div>
-      <div class="list-url">${escapeHtml(bookmark.host)}${escapeHtml(bookmark.route || "")}</div>
+      <div class="list-title">${escapeHtml(
+        bookmark.title || bookmark.host
+      )}</div>
+      <div class="list-url">${escapeHtml(bookmark.host)}${escapeHtml(
+    bookmark.route || ""
+  )}</div>
     </div>
     <div class="list-meta">Last visited: ${lastVisited}</div>
     <button class="delete-btn" title="Delete bookmark">×</button>
   `;
-  row.addEventListener("click", e => {
+  row.addEventListener("click", (e) => {
     if (e.target.classList.contains("delete-btn")) return;
-    const viewerUrl = browserAPI.runtime.getURL(`viewer.html?url=${encodeURIComponent(bookmark.url)}`);
+    const viewerUrl = browserAPI.runtime.getURL(
+      `viewer.html?url=${encodeURIComponent(bookmark.url)}`
+    );
     browserAPI.tabs.create({ url: viewerUrl });
   });
   const deleteBtn = row.querySelector(".delete-btn");
   deleteBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    if (confirm(`Delete bookmark for "${bookmark.title || bookmark.host}"?\n\nThis cannot be undone.`)) {
+    if (
+      confirm(
+        `Delete bookmark for "${
+          bookmark.title || bookmark.host
+        }"?\n\nThis cannot be undone.`
+      )
+    ) {
       await bookmarks.remove(bookmark.url);
       logger.info("Bookmark deleted", { url: bookmark.url });
       loadBookmarks();
@@ -157,7 +175,10 @@ exportBtn.addEventListener("click", async () => {
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
     a.href = url;
     a.download = `nostr-web-bookmarks-${timestamp}.json`;
     a.click();
@@ -168,7 +189,7 @@ exportBtn.addEventListener("click", async () => {
     modal.show({
       title: "Error",
       message: `Failed to export bookmarks: ${e.message}`,
-      type: "error"
+      type: "error",
     });
   }
 });
@@ -187,10 +208,11 @@ importFile.addEventListener("change", async (e) => {
     logger.info("Bookmarks imported", result);
     modal.show({
       title: "Import Successful",
-      message: `<strong>Added:</strong> ${result.added}<br>` +
+      message:
+        `<strong>Added:</strong> ${result.added}<br>` +
         `<strong>Skipped (duplicates):</strong> ${result.skipped}<br>` +
         `<strong>Total bookmarks:</strong> ${result.total}`,
-      type: "info"
+      type: "info",
     });
     loadBookmarks();
   } catch (e) {
@@ -198,7 +220,7 @@ importFile.addEventListener("change", async (e) => {
     modal.show({
       title: "Import Failed",
       message: `Import failed: ${e.message}`,
-      type: "error"
+      type: "error",
     });
   } finally {
     // Reset file input so the same file can be imported again
@@ -212,7 +234,7 @@ clearAll.addEventListener("click", async () => {
     modal.show({
       title: "No Bookmarks",
       message: "No bookmarks to clear.",
-      type: "info"
+      type: "info",
     });
     return;
   }
@@ -226,7 +248,7 @@ clearAll.addEventListener("click", async () => {
       await bookmarks.clear();
       logger.info("All bookmarks cleared");
       loadBookmarks();
-    }
+    },
   });
 });
 
@@ -236,4 +258,3 @@ loadBookmarks();
 // Set default sort button style
 sortByDate.style.background = "#0a0a0a";
 sortByDate.style.color = "#ffffff";
-

@@ -1210,7 +1210,7 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
     modal.show({
       title: "Error",
       message: `Failed to add bookmark: ${e.message}`,
-      type: "error"
+      type: "error",
     });
   }
 });

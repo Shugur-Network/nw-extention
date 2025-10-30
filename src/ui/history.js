@@ -121,8 +121,9 @@ function createHistoryItem(item) {
     // Note: We don't have delete functionality in performanceMonitor yet
     modal.show({
       title: "Coming Soon",
-      message: "Delete single items coming soon! Use 'Clear All' to remove all history.",
-      type: "info"
+      message:
+        "Delete single items coming soon! Use 'Clear All' to remove all history.",
+      type: "info",
     });
   });
 
@@ -192,7 +193,7 @@ function createHistoryListItem(item) {
         modal.show({
           title: "Error",
           message: `Failed to delete: ${e.message}`,
-          type: "error"
+          type: "error",
         });
       }
     }
@@ -344,7 +345,8 @@ allFilter.addEventListener("click", () => {
 clearAll.addEventListener("click", async () => {
   modal.confirm({
     title: "Clear All History",
-    message: "Clear all browsing history?<br><br>This will permanently remove all your browsing history.<br><br><strong>This cannot be undone.</strong>",
+    message:
+      "Clear all browsing history?<br><br>This will permanently remove all your browsing history.<br><br><strong>This cannot be undone.</strong>",
     confirmText: "Clear All",
     cancelText: "Cancel",
     onConfirm: async () => {
@@ -357,10 +359,10 @@ clearAll.addEventListener("click", async () => {
         modal.show({
           title: "Error",
           message: `Failed to clear history: ${e.message}`,
-          type: "error"
+          type: "error",
         });
       }
-    }
+    },
   });
 });
 

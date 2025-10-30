@@ -22,7 +22,8 @@ const browserAPI = typeof browser !== "undefined" ? browser : chrome;
 clearCache.addEventListener("click", async () => {
   modal.confirm({
     title: "Clear Cache",
-    message: "Clear all caches?<br><br>This will remove stored DNS records, events, and site indexes.",
+    message:
+      "Clear all caches?<br><br>This will remove stored DNS records, events, and site indexes.",
     confirmText: "Clear Cache",
     cancelText: "Cancel",
     onConfirm: async () => {
@@ -36,7 +37,7 @@ clearCache.addEventListener("click", async () => {
           modal.show({
             title: "Error",
             message: `Failed to clear cache: ${response.error}`,
-            type: "error"
+            type: "error",
           });
         } else {
           clearCache.textContent = "Cache Cleared!";
@@ -48,10 +49,10 @@ clearCache.addEventListener("click", async () => {
         modal.show({
           title: "Error",
           message: `Failed to clear cache: ${err.message}`,
-          type: "error"
+          type: "error",
         });
       }
-    }
+    },
   });
 });
 
@@ -100,7 +101,7 @@ saveDefaultSite.addEventListener("click", async () => {
     modal.show({
       title: "Error",
       message: `Failed to save default website: ${err.message}`,
-      type: "error"
+      type: "error",
     });
   }
 });
