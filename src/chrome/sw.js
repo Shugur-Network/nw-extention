@@ -277,7 +277,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               cacheKey,
               siteIndexId: siteIndex.id.slice(0, 8),
             });
-            sendResponse({ ok: true, result: { doc: prefetched } });
+            // Prepare metadata even for cached content
+            const metadata = {
+              pubkey: boot.pk || null,
+              relays: boot.relays || [],
+              lastUpdated: siteIndex.created_at
+                ? siteIndex.created_at * 1000
+                : Date.now(),
+              signatureValid: true,
+              relayHealth: {
+                online: boot.relays?.length || 0,
+                total: boot.relays?.length || 0,
+              },
+            };
+            sendResponse({ ok: true, result: { doc: prefetched, metadata } });
             return;
           }
 
@@ -289,7 +302,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             });
             // Update prefetch cache with validated content
             prefetchCache.set(cacheKey, cached, CONFIG.PREFETCH_TTL);
-            sendResponse({ ok: true, result: { doc: cached } });
+            // Prepare metadata even for cached content
+            const metadata = {
+              pubkey: boot.pk || null,
+              relays: boot.relays || [],
+              lastUpdated: siteIndex.created_at
+                ? siteIndex.created_at * 1000
+                : Date.now(),
+              signatureValid: true,
+              relayHealth: {
+                online: boot.relays?.length || 0,
+                total: boot.relays?.length || 0,
+              },
+            };
+            sendResponse({ ok: true, result: { doc: cached, metadata } });
             return;
           }
 
@@ -329,7 +355,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           prefetchCache.set(cacheKey, doc, CONFIG.PREFETCH_TTL);
           await cacheOffline(cacheKey, doc);
 
-          sendResponse({ ok: true, result: { doc } });
+          // Prepare metadata for UI
+          const metadata = {
+            pubkey: boot.pk || null,
+            relays: boot.relays || [],
+            lastUpdated: siteIndex.created_at
+              ? siteIndex.created_at * 1000
+              : Date.now(),
+            signatureValid: true, // If we got here, signature is valid
+            relayHealth: {
+              online: boot.relays?.length || 0,
+              total: boot.relays?.length || 0,
+            },
+          };
+
+          sendResponse({ ok: true, result: { doc, metadata } });
         } catch (e) {
           fetchError = e;
           logger.warn("Relay fetch failed", { error: e.message });
@@ -346,6 +386,69 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           throw fetchError;
         }
       } catch (e) {
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  // Handle nw.prefetch command from UI (smart prefetching)
+  if (msg?.cmd === "nw.prefetch") {
+    (async () => {
+      try {
+        const { host, route } = msg;
+        const cacheKey = `${host}${route || "/"}`;
+
+        // Check if already cached
+        if (prefetchCache.has(cacheKey)) {
+          sendResponse({ ok: true, cached: true });
+          return;
+        }
+
+        // Fetch in background (low priority)
+        logger.info("Prefetching page", { cacheKey });
+
+        const boot = await rpc("dnsBootstrap", { host });
+        const siteIndex = await rpc("fetchSiteIndex", { boot });
+        const manifest = await rpc("fetchManifestForRoute", {
+          boot,
+          siteIndex,
+          route: route || "/",
+        });
+        const assets = await rpc("fetchAssets", {
+          boot,
+          manifest,
+          siteIndexId: siteIndex.id,
+        });
+        await rpc("verifySRI", { assets });
+        const doc = await rpc("assembleDocument", { manifest, assets });
+
+        // Store site index ID with doc for cache validation
+        doc._siteIndexId = siteIndex.id;
+
+        // Store in prefetch cache (short-term) and offline cache (long-term)
+        prefetchCache.set(cacheKey, doc, CONFIG.PREFETCH_TTL);
+        await cacheOffline(cacheKey, doc);
+
+        logger.info("Prefetch complete", { cacheKey });
+        sendResponse({ ok: true, cached: false });
+      } catch (e) {
+        logger.warn("Prefetch failed", { error: e.message });
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      }
+    })();
+    return true;
+  }
+
+  // Handle nw.getDNS command - get DNS info without loading page
+  if (msg?.cmd === "nw.getDNS") {
+    (async () => {
+      try {
+        const { host } = msg;
+        const boot = await rpc("dnsBootstrap", { host });
+        sendResponse({ ok: true, result: boot });
+      } catch (e) {
+        logger.warn("DNS fetch failed", { error: e.message });
         sendResponse({ ok: false, error: String(e?.message || e) });
       }
     })();

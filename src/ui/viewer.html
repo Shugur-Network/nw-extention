@@ -546,6 +546,134 @@
       .bookmarks-footer button:hover {
         background: #e8e8e8;
       }
+
+      /* Site Info Panel */
+      .site-info-panel {
+        position: absolute;
+        top: 60px;
+        right: 120px;
+        width: 320px;
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        display: none;
+        z-index: 1000;
+      }
+
+      .site-info-panel.show {
+        display: block;
+      }
+
+      .site-info-header {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .site-info-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .site-info-content {
+        padding: 12px 14px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .info-row {
+        margin-bottom: 10px;
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+
+      .info-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-label {
+        font-size: 11px;
+        color: var(--text-secondary);
+        min-width: 70px;
+        flex-shrink: 0;
+        padding-top: 2px;
+      }
+
+      .info-value {
+        font-size: 12px;
+        color: var(--text);
+        word-break: break-all;
+        line-height: 1.4;
+        flex: 1;
+      }
+
+      .info-value.monospace {
+        font-family: "Monaco", "Courier New", monospace;
+        font-size: 10px;
+        background: #f5f5f5;
+        padding: 4px 6px;
+        border-radius: 4px;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .status-badge.success {
+        background: #e6f4ea;
+        color: #1e7e34;
+      }
+
+      .status-badge.warning {
+        background: #fff7ed;
+        color: #c2410c;
+      }
+
+      .status-badge.error {
+        background: #fee;
+        color: #c00;
+      }
+
+      .status-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .relay-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .relay-item {
+        font-size: 10px;
+        padding: 4px 6px;
+        background: #f5f5f5;
+        border-radius: 3px;
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .relay-count {
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
     </style>
   </head>
   <body>
@@ -646,6 +774,23 @@
           d="M3 12h18M3 6h18M3 18h18"
         />
       </symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24">
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          d="M12 16v-4m0-4h.01"
+        />
+      </symbol>
     </svg>
 
     <div class="toolbar">
@@ -677,6 +822,10 @@
         <svg><use href="#icon-bookmark" /></svg>
       </button>
 
+      <button id="siteInfoBtn" class="btn" title="Site information">
+        <svg><use href="#icon-info" /></svg>
+      </button>
+
       <button id="menuBtn" class="btn" title="Menu">
         <svg><use href="#icon-menu" /></svg>
       </button>
@@ -697,9 +846,6 @@
 
     <!-- Menu Dropdown -->
     <div class="menu-dropdown" id="menuDropdown">
-      <div class="menu-item" id="menuHome">
-        <span>Home</span>
-      </div>
       <div class="menu-item" id="menuHistory">
         <span>History</span>
       </div>
@@ -742,6 +888,31 @@
       </div>
     </div>
 
+    <!-- Site Info Panel -->
+    <div class="site-info-panel" id="siteInfoPanel">
+      <div class="site-info-header">
+        <div class="site-info-title">Site Information</div>
+        <button
+          class="btn"
+          id="closeSiteInfo"
+          style="width: 24px; height: 24px; padding: 0; font-size: 16px"
+        >
+          ×
+        </button>
+      </div>
+      <div class="site-info-content" id="siteInfoContent">
+        <div class="info-row">
+          <div class="info-label">Status</div>
+          <div class="info-value">
+            <span class="status-badge success">
+              <span class="status-dot"></span>
+              Not loaded
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="content-wrapper" id="contentWrapper">
       <!-- Tab content frames will be added here dynamically -->
     </div>
@@ -752,6 +923,7 @@
       >
     </div>
 
+    <script src="../shared/modal.js"></script>
     <script src="viewer.js" type="module"></script>
   </body>
 </html>

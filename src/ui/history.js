@@ -119,9 +119,11 @@ function createHistoryItem(item) {
   deleteBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     // Note: We don't have delete functionality in performanceMonitor yet
-    alert(
-      "Delete single items coming soon! Use 'Clear All' to remove all history."
-    );
+    modal.show({
+      title: "Coming Soon",
+      message: "Delete single items coming soon! Use 'Clear All' to remove all history.",
+      type: "info"
+    });
   });
 
   return itemDiv;
@@ -187,7 +189,11 @@ function createHistoryListItem(item) {
         loadHistory();
       } catch (e) {
         logger.error("Failed to delete history entry", { error: e.message });
-        alert(`Failed to delete: ${e.message}`);
+        modal.show({
+          title: "Error",
+          message: `Failed to delete: ${e.message}`,
+          type: "error"
+        });
       }
     }
   });
@@ -336,22 +342,26 @@ allFilter.addEventListener("click", () => {
 });
 
 clearAll.addEventListener("click", async () => {
-  if (
-    !confirm(
-      "Clear all browsing history?\n\nThis will permanently remove all your browsing history.\n\nThis cannot be undone."
-    )
-  ) {
-    return;
-  }
-
-  try {
-    await performanceMonitor.clearHistory();
-    logger.info("History cleared");
-    loadHistory();
-  } catch (e) {
-    logger.error("Failed to clear history", { error: e.message });
-    alert(`Failed to clear history: ${e.message}`);
-  }
+  modal.confirm({
+    title: "Clear All History",
+    message: "Clear all browsing history?<br><br>This will permanently remove all your browsing history.<br><br><strong>This cannot be undone.</strong>",
+    confirmText: "Clear All",
+    cancelText: "Cancel",
+    onConfirm: async () => {
+      try {
+        await performanceMonitor.clearHistory();
+        logger.info("History cleared");
+        loadHistory();
+      } catch (e) {
+        logger.error("Failed to clear history", { error: e.message });
+        modal.show({
+          title: "Error",
+          message: `Failed to clear history: ${e.message}`,
+          type: "error"
+        });
+      }
+    }
+  });
 });
 
 // Initialize

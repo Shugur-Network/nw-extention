@@ -23,7 +23,6 @@ const contentWrapper = document.getElementById("contentWrapper");
 const tabsContainer = document.getElementById("tabsContainer");
 const newTabBtn = document.getElementById("newTabBtn");
 const menuDropdown = document.getElementById("menuDropdown");
-const menuHome = document.getElementById("menuHome");
 const menuHistory = document.getElementById("menuHistory");
 const menuBookmarks = document.getElementById("menuBookmarks");
 const menuSettings = document.getElementById("menuSettings");
@@ -37,6 +36,15 @@ const addBookmarkFromDropdownBtn = document.getElementById(
   "addBookmarkFromDropdownBtn"
 );
 const manageBookmarksBtn = document.getElementById("manageBookmarksBtn");
+const siteInfoBtn = document.getElementById("siteInfoBtn");
+const siteInfoPanel = document.getElementById("siteInfoPanel");
+const siteInfoContent = document.getElementById("siteInfoContent");
+const closeSiteInfo = document.getElementById("closeSiteInfo");
+
+// Global state for features
+let bandwidthSaverEnabled = false;
+let prefetchEnabled = true;
+let siteMetadata = null; // Stores current site metadata
 
 /**
  * Tab class - Represents a single browser tab
@@ -54,6 +62,14 @@ class Tab {
     this.navigationHistory = [];
     this.historyIndex = -1;
     this.element = null;
+    // Site metadata for verification panel
+    this.metadata = {
+      pubkey: null,
+      relays: [],
+      lastUpdated: null,
+      signatureValid: false,
+      relayHealth: { online: 0, total: 0 },
+    };
   }
 }
 
@@ -113,7 +129,7 @@ class TabManager {
     const frame = document.createElement("iframe");
     frame.id = `sandbox-${tab.id}`;
     frame.src = "sandbox.html";
-    frame.sandbox = "allow-scripts";
+    frame.sandbox = "allow-scripts allow-popups allow-popups-to-escape-sandbox";
     frame.className = "content-frame hidden";
     frame.style.width = "100%";
     frame.style.height = "100%";
@@ -275,10 +291,18 @@ function assembleHTML(bundle) {
         const href = link.getAttribute("href");
         if (!href) return;
 
-        // Check if it's an internal link
+        // Handle external links - open in new tab
         if (
           href.startsWith("http://") ||
-          href.startsWith("https://") ||
+          href.startsWith("https://")
+        ) {
+          e.preventDefault();
+          window.open(href, "_blank", "noopener,noreferrer");
+          return;
+        }
+
+        // Allow mailto, tel, and anchor links to work normally
+        if (
           href.startsWith("mailto:") ||
           href.startsWith("tel:") ||
           href.startsWith("#")
@@ -286,6 +310,7 @@ function assembleHTML(bundle) {
           return;
         }
 
+        // Internal navigation - prevent default and notify parent
         e.preventDefault();
 
         // Extract route
@@ -303,6 +328,63 @@ function assembleHTML(bundle) {
         // Internal navigation detected
         window.parent.postMessage({ cmd: "navigate", route: route }, "*");
       }, true);
+      
+      // Smart prefetching - hover to prefetch
+      if (${prefetchEnabled}) {
+        let prefetchTimeout = null;
+        let prefetchedUrls = new Set();
+
+        document.addEventListener('mouseover', (e) => {
+          const link = e.target.closest('a');
+          if (!link) return;
+
+          const href = link.getAttribute('href');
+          if (!href) return;
+
+          // Only prefetch internal links
+          if (href.startsWith('http://') || href.startsWith('https://') || 
+              href.startsWith('mailto:') || href.startsWith('tel:') || 
+              href.startsWith('#')) {
+            return;
+          }
+
+          // Extract route
+          let route = href;
+          if (route.endsWith('.html')) {
+            route = route.replace(/\\.html$/, '');
+          }
+          if (!route.startsWith('/')) {
+            route = '/' + route;
+          }
+          if (route === '/index') {
+            route = '/';
+          }
+
+          const fullUrl = window.location.hostname + route;
+
+          // Don't prefetch same URL twice
+          if (prefetchedUrls.has(fullUrl)) return;
+
+          // Wait 300ms before prefetching (user might just be passing by)
+          clearTimeout(prefetchTimeout);
+          prefetchTimeout = setTimeout(() => {
+            prefetchedUrls.add(fullUrl);
+            
+            // Notify parent to prefetch
+            window.parent.postMessage({
+              cmd: 'prefetch',
+              route: route
+            }, '*');
+          }, 300);
+        }, true);
+
+        document.addEventListener('mouseout', (e) => {
+          const link = e.target.closest('a');
+          if (link) {
+            clearTimeout(prefetchTimeout);
+          }
+        }, true);
+      }
       
       // Navigation handler loaded - set flag for Firefox sandbox
       window._nwebNavHandlerLoaded = true;
@@ -682,11 +764,54 @@ async function loadSiteInTab(tab, input, pushHistory = true) {
 
     logger.info("Content loaded from service worker");
 
+    // Store site metadata for verification panel
+    if (response.result.metadata) {
+      tab.metadata = {
+        pubkey: response.result.metadata.pubkey || null,
+        relays: response.result.metadata.relays || [],
+        lastUpdated: response.result.metadata.lastUpdated || Date.now(),
+        signatureValid: response.result.metadata.signatureValid !== false,
+        relayHealth: response.result.metadata.relayHealth || {
+          online: 0,
+          total: 0,
+        },
+      };
+    } else {
+      // No metadata provided - likely offline cache or error
+      // Try to get DNS info directly
+      try {
+        const bootResponse = await chrome.runtime.sendMessage({
+          cmd: "nw.getDNS",
+          host: target.host,
+        });
+        if (bootResponse?.ok && bootResponse.result) {
+          tab.metadata = {
+            pubkey: bootResponse.result.pk || null,
+            relays: bootResponse.result.relays || [],
+            lastUpdated: Date.now(),
+            signatureValid: false, // Can't verify if offline
+            relayHealth: {
+              online: 0,
+              total: bootResponse.result.relays?.length || 0,
+            },
+          };
+        }
+      } catch (e) {
+        logger.warn("Could not fetch DNS metadata", { error: e.message });
+      }
+    }
+
     // Ensure tab's sandbox is ready
     await waitForTabSandbox(tab);
 
+    // Process HTML for bandwidth saver mode if enabled
+    let processedDoc = response.result.doc;
+    if (bandwidthSaverEnabled) {
+      processedDoc = applyBandwidthSaver(processedDoc);
+    }
+
     // Assemble full HTML with inline scripts (works in sandbox!)
-    const fullHTML = assembleHTML(response.result.doc);
+    const fullHTML = assembleHTML(processedDoc);
 
     logger.debug("HTML assembled for rendering", {
       tabId: tab.id,
@@ -949,7 +1074,11 @@ reloadBtn.addEventListener("click", reload);
 bookmarkBtn.addEventListener("click", async () => {
   const tab = tabManager.getActiveTab();
   if (!tab || !tab.domain) {
-    alert("Please load a page first before bookmarking.");
+    modal.show({
+      title: "Cannot Bookmark",
+      message: "Please load a page first before bookmarking.",
+      type: "info",
+    });
     return;
   }
 
@@ -958,16 +1087,26 @@ bookmarkBtn.addEventListener("click", async () => {
 
   if (isBookmarked) {
     // Remove bookmark
-    if (confirm(`Remove bookmark for "${tab.title || tab.domain}"?`)) {
-      try {
-        await bookmarks.remove(currentUrl);
-        logger.info("Bookmark removed", { url: currentUrl });
-        await updateBookmarkButton(tab);
-      } catch (e) {
-        logger.error("Failed to remove bookmark", e);
-        alert(`Failed to remove bookmark: ${e.message}`);
-      }
-    }
+    modal.confirm({
+      title: "Remove Bookmark",
+      message: `Remove bookmark for "${tab.title || tab.domain}"?`,
+      confirmText: "Remove",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          await bookmarks.remove(currentUrl);
+          logger.info("Bookmark removed", { url: currentUrl });
+          await updateBookmarkButton(tab);
+        } catch (e) {
+          logger.error("Failed to remove bookmark", e);
+          modal.show({
+            title: "Error",
+            message: `Failed to remove bookmark: ${e.message}`,
+            type: "error",
+          });
+        }
+      },
+    });
   } else {
     // Add bookmark
     try {
@@ -985,7 +1124,11 @@ bookmarkBtn.addEventListener("click", async () => {
       await updateBookmarkButton(tab);
     } catch (e) {
       logger.error("Failed to add bookmark", e);
-      alert(`Failed to add bookmark: ${e.message}`);
+      modal.show({
+        title: "Error",
+        message: `Failed to add bookmark: ${e.message}`,
+        type: "error",
+      });
     }
   }
 });
@@ -1002,11 +1145,6 @@ menuBtn.addEventListener("click", (e) => {
 });
 
 // Menu items
-menuHome.addEventListener("click", () => {
-  window.location.href = chrome.runtime.getURL("home.html");
-  hideMenu();
-});
-
 menuHistory.addEventListener("click", () => {
   window.location.href = chrome.runtime.getURL("history.html");
   hideMenu();
@@ -1032,7 +1170,11 @@ bookmarksSearchInput.addEventListener("input", (e) => {
 addBookmarkFromDropdownBtn.addEventListener("click", async () => {
   const tab = tabManager.getActiveTab();
   if (!tab || !tab.domain) {
-    alert("Please load a page first before bookmarking.");
+    modal.show({
+      title: "Cannot Bookmark",
+      message: "Please load a page first before bookmarking.",
+      type: "info",
+    });
     return;
   }
 
@@ -1040,7 +1182,11 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
   const isBookmarked = await bookmarks.has(currentUrl);
 
   if (isBookmarked) {
-    alert("This page is already bookmarked!");
+    modal.show({
+      title: "Already Bookmarked",
+      message: "This page is already bookmarked!",
+      type: "info",
+    });
     return;
   }
 
@@ -1061,7 +1207,11 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
     await loadBookmarksDropdown();
   } catch (e) {
     logger.error("Failed to add bookmark", e);
-    alert(`Failed to add bookmark: ${e.message}`);
+    modal.show({
+      title: "Error",
+      message: `Failed to add bookmark: ${e.message}`,
+      type: "error"
+    });
   }
 });
 
@@ -1086,7 +1236,203 @@ document.addEventListener("click", (e) => {
   if (!bookmarksDropdown.contains(e.target)) {
     hideBookmarksDropdown();
   }
+
+  // Close site info panel
+  if (
+    !siteInfoPanel.contains(e.target) &&
+    e.target !== siteInfoBtn &&
+    !siteInfoBtn.contains(e.target)
+  ) {
+    hideSiteInfo();
+  }
 });
+
+// ==================== NEW FEATURES ====================
+
+/**
+ * Feature 1: Bandwidth Saver Mode
+ * Replace images and videos with placeholders that load on click
+ */
+function applyBandwidthSaver(doc) {
+  if (!doc || !doc.html) return doc;
+
+  let html = doc.html;
+
+  // Replace images with lazy-load placeholders
+  html = html.replace(
+    /<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi,
+    (match, before, src, after) => {
+      // Skip tiny images (likely icons)
+      if (src.includes("data:image") && src.length < 1000) {
+        return match;
+      }
+
+      return `<div class="bandwidth-saver-image" data-src="${src}" style="background:#f0f0f0;padding:20px;text-align:center;cursor:pointer;border-radius:8px;color:#666;font-size:13px;" onclick="this.outerHTML='<img src=\\'${src}\\' ${before} ${after}>'">📷 Click to load image<br><small>${src
+        .split("/")
+        .pop()
+        .substring(0, 30)}</small></div>`;
+    }
+  );
+
+  // Replace videos with placeholders
+  html = html.replace(
+    /<video([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi,
+    (match, before, src, after) => {
+      return `<div class="bandwidth-saver-video" data-src="${src}" style="background:#000;padding:40px;text-align:center;cursor:pointer;border-radius:8px;color:#fff;font-size:14px;" onclick="this.outerHTML='<video controls src=\\'${src}\\' ${before} ${after}></video>'">▶️ Click to load video<br><small>Bandwidth saver enabled</small></div>`;
+    }
+  );
+
+  return { ...doc, html };
+}
+
+/**
+ * Feature 2: Smart Prefetching
+ * Now injected directly into HTML via assembleHTML()
+ * The prefetch handler is part of the navigation handler script
+ */
+
+// Handle prefetch requests
+window.addEventListener("message", async (event) => {
+  if (event.data?.cmd === "prefetch") {
+    const tab = tabManager.getActiveTab();
+    if (!tab || !tab.domain) return;
+
+    const route = event.data.route;
+    const prefetchUrl = `${tab.domain}${route}`;
+
+    logger.info("Prefetching page", { url: prefetchUrl });
+
+    try {
+      // Send prefetch request to service worker (low priority)
+      await chrome.runtime.sendMessage({
+        cmd: "nw.prefetch",
+        host: tab.domain,
+        route: route,
+      });
+      logger.info("Page prefetched", { url: prefetchUrl });
+    } catch (e) {
+      logger.warn("Prefetch failed", { url: prefetchUrl, error: e.message });
+    }
+  }
+});
+
+/**
+ * Feature 3: Content Verification Panel
+ * Show site info, pubkey, relays, signature status
+ */
+function showSiteInfo() {
+  const tab = tabManager.getActiveTab();
+  if (!tab || !tab.domain) {
+    siteInfoContent.innerHTML = `
+      <div class="info-row">
+        <div class="info-label">Status</div>
+        <div class="info-value">
+          <span class="status-badge warning">
+            <span class="status-dot"></span>
+            No site loaded
+          </span>
+        </div>
+      </div>
+    `;
+    siteInfoPanel.classList.add("show");
+    return;
+  }
+
+  const meta = tab.metadata;
+  const pubkeyShort = meta.pubkey
+    ? `${meta.pubkey.substring(0, 8)}...${meta.pubkey.substring(56)}`
+    : "Unknown";
+
+  const lastUpdated = meta.lastUpdated
+    ? new Date(meta.lastUpdated).toLocaleString()
+    : "Unknown";
+
+  const relayHealthText =
+    meta.relayHealth.total > 0
+      ? `${meta.relayHealth.online}/${meta.relayHealth.total} online`
+      : "Unknown";
+
+  const statusClass = meta.signatureValid ? "success" : "warning";
+  const statusText = meta.signatureValid ? "Verified" : "Unverified";
+
+  siteInfoContent.innerHTML = `
+    <div class="info-row">
+      <div class="info-label">Status</div>
+      <div class="info-value">
+        <span class="status-badge ${statusClass}">
+          <span class="status-dot"></span>
+          ${statusText}
+        </span>
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-label">Domain</div>
+      <div class="info-value">${escapeHtml(tab.domain)}</div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-label">Publisher</div>
+      <div class="info-value monospace" title="${escapeHtml(
+        meta.pubkey || "Unknown"
+      )}">
+        ${escapeHtml(pubkeyShort)}
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-label">Updated</div>
+      <div class="info-value">${lastUpdated}</div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-label">Relays</div>
+      <div class="info-value">
+        <span class="relay-count">${relayHealthText}</span>
+        <div class="relay-list" style="margin-top: 6px;">
+          ${meta.relays
+            .slice(0, 3)
+            .map(
+              (relay) =>
+                `<div class="relay-item" title="${escapeHtml(
+                  relay
+                )}">${escapeHtml(relay)}</div>`
+            )
+            .join("")}
+          ${
+            meta.relays.length > 3
+              ? `<div class="relay-item" style="text-align:center;">+ ${
+                  meta.relays.length - 3
+                } more</div>`
+              : ""
+          }
+        </div>
+      </div>
+    </div>
+  `;
+
+  siteInfoPanel.classList.add("show");
+}
+
+function hideSiteInfo() {
+  siteInfoPanel.classList.remove("show");
+}
+
+// Site info button
+siteInfoBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  hideMenu();
+  hideBookmarksDropdown();
+  if (siteInfoPanel.classList.contains("show")) {
+    hideSiteInfo();
+  } else {
+    showSiteInfo();
+  }
+});
+
+closeSiteInfo.addEventListener("click", hideSiteInfo);
+
+// ==================== END NEW FEATURES ====================
 
 // New tab button
 newTabBtn.addEventListener("click", () => {

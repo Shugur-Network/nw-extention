@@ -87,15 +87,22 @@ const navigationClickHandler = (e) => {
 
   console.log("[Nostr Web] Link clicked:", href);
 
-  // Allow external links and anchors
+  // Handle external links - open in new tab
+  if (href.startsWith("http://") || href.startsWith("https://")) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("[Nostr Web] Opening external link in new tab:", href);
+    window.open(href, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  // Allow mailto, tel, and anchor links to work normally
   if (
-    href.startsWith("http://") ||
-    href.startsWith("https://") ||
     href.startsWith("mailto:") ||
     href.startsWith("tel:") ||
     href.startsWith("#")
   ) {
-    console.log("[Nostr Web] External/anchor link, allowing");
+    console.log("[Nostr Web] Mailto/tel/anchor link, allowing");
     return;
   }
 

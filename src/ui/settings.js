@@ -20,31 +20,39 @@ const browserAPI = typeof browser !== "undefined" ? browser : chrome;
  * Clear all caches
  */
 clearCache.addEventListener("click", async () => {
-  if (
-    !confirm(
-      "Clear all caches? \n\nThis will remove stored DNS records, events, and site indexes."
-    )
-  ) {
-    return;
-  }
+  modal.confirm({
+    title: "Clear Cache",
+    message: "Clear all caches?<br><br>This will remove stored DNS records, events, and site indexes.",
+    confirmText: "Clear Cache",
+    cancelText: "Cancel",
+    onConfirm: async () => {
+      try {
+        // Send message to service worker to clear caches
+        const response = await chrome.runtime.sendMessage({
+          type: "CLEAR_CACHE",
+        });
 
-  try {
-    // Send message to service worker to clear caches
-    const response = await chrome.runtime.sendMessage({
-      type: "CLEAR_CACHE",
-    });
-
-    if (response.error) {
-      alert(`Failed to clear cache: ${response.error}`);
-    } else {
-      clearCache.textContent = "Cache Cleared!";
-      setTimeout(() => {
-        clearCache.textContent = "Clear Cache";
-      }, 2000);
+        if (response.error) {
+          modal.show({
+            title: "Error",
+            message: `Failed to clear cache: ${response.error}`,
+            type: "error"
+          });
+        } else {
+          clearCache.textContent = "Cache Cleared!";
+          setTimeout(() => {
+            clearCache.textContent = "Clear Cache";
+          }, 2000);
+        }
+      } catch (err) {
+        modal.show({
+          title: "Error",
+          message: `Failed to clear cache: ${err.message}`,
+          type: "error"
+        });
+      }
     }
-  } catch (err) {
-    alert(`Failed to clear cache: ${err.message}`);
-  }
+  });
 });
 
 /**
@@ -89,7 +97,11 @@ saveDefaultSite.addEventListener("click", async () => {
       saveDefaultSite.disabled = false;
     }, 2000);
   } catch (err) {
-    alert(`Failed to save default website: ${err.message}`);
+    modal.show({
+      title: "Error",
+      message: `Failed to save default website: ${err.message}`,
+      type: "error"
+    });
   }
 });
 

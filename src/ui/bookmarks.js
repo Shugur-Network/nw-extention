@@ -165,7 +165,11 @@ exportBtn.addEventListener("click", async () => {
     logger.info("Bookmarks exported");
   } catch (e) {
     logger.error("Failed to export bookmarks", { error: e.message });
-    alert(`Failed to export bookmarks: ${e.message}`);
+    modal.show({
+      title: "Error",
+      message: `Failed to export bookmarks: ${e.message}`,
+      type: "error"
+    });
   }
 });
 
@@ -181,16 +185,21 @@ importFile.addEventListener("change", async (e) => {
     const text = await file.text();
     const result = await bookmarks.import(text);
     logger.info("Bookmarks imported", result);
-    alert(
-      `Import successful!\n\n` +
-        `Added: ${result.added}\n` +
-        `Skipped (duplicates): ${result.skipped}\n` +
-        `Total bookmarks: ${result.total}`
-    );
+    modal.show({
+      title: "Import Successful",
+      message: `<strong>Added:</strong> ${result.added}<br>` +
+        `<strong>Skipped (duplicates):</strong> ${result.skipped}<br>` +
+        `<strong>Total bookmarks:</strong> ${result.total}`,
+      type: "info"
+    });
     loadBookmarks();
   } catch (e) {
     logger.error("Failed to import bookmarks", { error: e.message });
-    alert(`Import failed: ${e.message}`);
+    modal.show({
+      title: "Import Failed",
+      message: `Import failed: ${e.message}`,
+      type: "error"
+    });
   } finally {
     // Reset file input so the same file can be imported again
     importFile.value = "";
@@ -200,19 +209,25 @@ importFile.addEventListener("change", async (e) => {
 clearAll.addEventListener("click", async () => {
   const stats = await bookmarks.getStats();
   if (stats.total === 0) {
-    alert("No bookmarks to clear.");
+    modal.show({
+      title: "No Bookmarks",
+      message: "No bookmarks to clear.",
+      type: "info"
+    });
     return;
   }
 
-  if (
-    confirm(
-      `Delete ALL ${stats.total} bookmarks?\n\nThis will permanently remove all your saved bookmarks.\n\nThis cannot be undone.`
-    )
-  ) {
-    await bookmarks.clear();
-    logger.info("All bookmarks cleared");
-    loadBookmarks();
-  }
+  modal.confirm({
+    title: "Delete All Bookmarks",
+    message: `Delete ALL ${stats.total} bookmarks?<br><br>This will permanently remove all your saved bookmarks.<br><br><strong>This cannot be undone.</strong>`,
+    confirmText: "Delete All",
+    cancelText: "Cancel",
+    onConfirm: async () => {
+      await bookmarks.clear();
+      logger.info("All bookmarks cleared");
+      loadBookmarks();
+    }
+  });
 });
 
 // Initialize
