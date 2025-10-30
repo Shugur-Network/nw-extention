@@ -161,8 +161,14 @@ function createHistoryListItem(item) {
   const deleteBtn = row.querySelector(".delete-btn");
   deleteBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    
-    if (confirm(`Delete ${item.count > 1 ? `${item.count} visits to` : 'visit to'} "${item.host}${item.route}" on this day?\n\nThis cannot be undone.`)) {
+
+    if (
+      confirm(
+        `Delete ${item.count > 1 ? `${item.count} visits to` : "visit to"} "${
+          item.host
+        }${item.route}" on this day?\n\nThis cannot be undone.`
+      )
+    ) {
       try {
         const deleted = await performanceMonitor.deleteHistoryEntry(
           item.url,
@@ -170,12 +176,12 @@ function createHistoryListItem(item) {
           item.route,
           item.dayKey
         );
-        logger.info("History entry deleted", { 
-          url: item.url, 
+        logger.info("History entry deleted", {
+          url: item.url,
           host: item.host,
           route: item.route,
           dayKey: item.dayKey,
-          deleted 
+          deleted,
         });
         // Reload history
         loadHistory();
@@ -222,13 +228,13 @@ function groupHistory(rawArr, period = "all") {
   const now = Date.now();
   const todayStart = getStartOfDay(now);
   const weekStart = getStartOfWeek(now);
-  
+
   for (const item of rawArr) {
     // Only group successful loads
     if (!item.success) continue;
     if (!item.startTime || isNaN(item.startTime) || item.startTime <= 0)
       continue;
-    
+
     // Apply period filter
     let periodTest = true;
     if (period === "today") {
@@ -238,9 +244,9 @@ function groupHistory(rawArr, period = "all") {
       // Check if startTime is within this week
       periodTest = item.startTime >= weekStart;
     }
-    
+
     if (!periodTest) continue;
-    
+
     const dayKey = getStartOfDay(item.startTime);
     const key = `${item.host}:${item.route}:${dayKey}`;
     if (!map.has(key)) {

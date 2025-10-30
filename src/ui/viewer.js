@@ -30,8 +30,12 @@ const menuSettings = document.getElementById("menuSettings");
 const bookmarksDropdown = document.getElementById("bookmarksDropdown");
 const bookmarksListDropdown = document.getElementById("bookmarksListDropdown");
 const bookmarksSearchInput = document.getElementById("bookmarksSearchInput");
-const closeBookmarksDropdown = document.getElementById("closeBookmarksDropdown");
-const addBookmarkFromDropdownBtn = document.getElementById("addBookmarkFromDropdownBtn");
+const closeBookmarksDropdown = document.getElementById(
+  "closeBookmarksDropdown"
+);
+const addBookmarkFromDropdownBtn = document.getElementById(
+  "addBookmarkFromDropdownBtn"
+);
 const manageBookmarksBtn = document.getElementById("manageBookmarksBtn");
 
 /**
@@ -68,14 +72,14 @@ class TabManager {
     this.tabs.push(tab);
     this.createTabElement(tab);
     this.createTabContent(tab);
-    
+
     if (url) {
       this.switchToTab(tab.id);
       loadSiteInTab(tab, url);
     } else {
       this.switchToTab(tab.id);
     }
-    
+
     logger.info("Tab created", { id: tab.id, url });
     return tab;
   }
@@ -84,22 +88,22 @@ class TabManager {
     const tabEl = document.createElement("div");
     tabEl.className = "tab";
     tabEl.dataset.tabId = tab.id;
-    
+
     tabEl.innerHTML = `
       <span class="tab-title">${tab.title}</span>
       <button class="tab-close" title="Close tab">×</button>
     `;
-    
+
     const closeBtn = tabEl.querySelector(".tab-close");
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.closeTab(tab.id);
     });
-    
+
     tabEl.addEventListener("click", () => {
       this.switchToTab(tab.id);
     });
-    
+
     tabsContainer.appendChild(tabEl);
     tab.element = tabEl;
   }
@@ -113,14 +117,14 @@ class TabManager {
     frame.className = "content-frame hidden";
     frame.style.width = "100%";
     frame.style.height = "100%";
-    
+
     contentWrapper.appendChild(frame);
     tab.sandboxFrame = frame;
-    
+
     // Set up message listener for this tab's sandbox
     const messageHandler = (event) => {
       if (event.source !== frame.contentWindow) return;
-      
+
       if (event.data?.cmd === "sandboxReady") {
         tab.sandboxReady = true;
         if (tab.sandboxReadyResolve) {
@@ -136,46 +140,46 @@ class TabManager {
         }
       }
     };
-    
+
     window.addEventListener("message", messageHandler);
   }
 
   switchToTab(tabId) {
     const tab = this.getTab(tabId);
     if (!tab) return;
-    
+
     // Hide all tabs and frames
-    this.tabs.forEach(t => {
+    this.tabs.forEach((t) => {
       t.element?.classList.remove("active");
       t.sandboxFrame?.classList.add("hidden");
     });
-    
+
     // Show selected tab
     tab.element?.classList.add("active");
     tab.sandboxFrame?.classList.remove("hidden");
-    
+
     this.activeTabId = tabId;
-    
+
     // Update UI
     urlInput.value = tab.url || "";
     updateNavigationButtons(tab);
-    
+
     logger.info("Switched to tab", { tabId });
   }
 
   closeTab(tabId) {
-    const tabIndex = this.tabs.findIndex(t => t.id === tabId);
+    const tabIndex = this.tabs.findIndex((t) => t.id === tabId);
     if (tabIndex === -1) return;
-    
+
     const tab = this.tabs[tabIndex];
-    
+
     // Remove DOM elements
     tab.element?.remove();
     tab.sandboxFrame?.remove();
-    
+
     // Remove from array
     this.tabs.splice(tabIndex, 1);
-    
+
     // If this was the active tab, switch to another
     if (this.activeTabId === tabId) {
       if (this.tabs.length > 0) {
@@ -187,22 +191,22 @@ class TabManager {
         this.createTab();
       }
     }
-    
+
     logger.info("Tab closed", { tabId });
   }
 
   getActiveTab() {
-    return this.tabs.find(t => t.id === this.activeTabId);
+    return this.tabs.find((t) => t.id === this.activeTabId);
   }
 
   getTab(tabId) {
-    return this.tabs.find(t => t.id === tabId);
+    return this.tabs.find((t) => t.id === tabId);
   }
 
   updateTabTitle(tabId, title) {
     const tab = this.getTab(tabId);
     if (!tab) return;
-    
+
     tab.title = title || "New Tab";
     const titleEl = tab.element?.querySelector(".tab-title");
     if (titleEl) {
@@ -346,13 +350,13 @@ function hideLoading() {
  */
 function showTabLoading(tab) {
   if (!tab || !tab.element) return;
-  
+
   const titleEl = tab.element.querySelector(".tab-title");
   if (!titleEl) return;
-  
+
   // Check if spinner already exists
   if (tab.element.querySelector(".tab-spinner")) return;
-  
+
   const spinner = document.createElement("div");
   spinner.className = "tab-spinner";
   titleEl.parentElement.insertBefore(spinner, titleEl);
@@ -364,7 +368,7 @@ function showTabLoading(tab) {
  */
 function hideTabLoading(tab) {
   if (!tab || !tab.element) return;
-  
+
   const spinner = tab.element.querySelector(".tab-spinner");
   if (spinner) {
     spinner.remove();
@@ -384,10 +388,11 @@ function updateNavigationButtons(tab) {
   }
   backBtn.disabled = tab.historyIndex <= 0;
   forwardBtn.disabled =
-    tab.historyIndex < 0 || tab.historyIndex >= tab.navigationHistory.length - 1;
+    tab.historyIndex < 0 ||
+    tab.historyIndex >= tab.navigationHistory.length - 1;
   reloadBtn.disabled = tab.historyIndex < 0;
   bookmarkBtn.disabled = !tab.url;
-  
+
   // Update bookmark button appearance based on whether page is bookmarked
   updateBookmarkButton(tab);
 }
@@ -400,10 +405,12 @@ async function updateBookmarkButton(tab) {
     bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
     return;
   }
-  
+
   const isBookmarked = await bookmarks.has(tab.url);
   if (isBookmarked) {
-    bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark-filled");
+    bookmarkBtn
+      .querySelector("use")
+      .setAttribute("href", "#icon-bookmark-filled");
     bookmarkBtn.title = "Remove bookmark";
   } else {
     bookmarkBtn.querySelector("use").setAttribute("href", "#icon-bookmark");
@@ -448,7 +455,7 @@ function hideBookmarksDropdown() {
 async function loadBookmarksDropdown(searchQuery = "") {
   try {
     await bookmarks.init();
-    
+
     const allBookmarks = await bookmarks.getAll({
       sortBy: "createdAt",
       ascending: false,
@@ -469,14 +476,24 @@ async function loadBookmarksDropdown(searchQuery = "") {
     for (const bookmark of allBookmarks) {
       const item = document.createElement("div");
       item.className = "bookmark-item-dropdown";
-      
-      const firstLetter = (bookmark.title || bookmark.host || "N")[0].toUpperCase();
-      
+
+      const firstLetter = (bookmark.title ||
+        bookmark.host ||
+        "N")[0].toUpperCase();
+
       item.innerHTML = `
-        <div class="bookmark-item-favicon">${bookmark.favicon ? `<img src="${bookmark.favicon}" width="24" height="24" style="border-radius: 6px;">` : firstLetter}</div>
+        <div class="bookmark-item-favicon">${
+          bookmark.favicon
+            ? `<img src="${bookmark.favicon}" width="24" height="24" style="border-radius: 6px;">`
+            : firstLetter
+        }</div>
         <div class="bookmark-item-info">
-          <div class="bookmark-item-title">${escapeHtml(bookmark.title || bookmark.host)}</div>
-          <div class="bookmark-item-url">${escapeHtml(bookmark.host)}${escapeHtml(bookmark.route || "")}</div>
+          <div class="bookmark-item-title">${escapeHtml(
+            bookmark.title || bookmark.host
+          )}</div>
+          <div class="bookmark-item-url">${escapeHtml(
+            bookmark.host
+          )}${escapeHtml(bookmark.route || "")}</div>
         </div>
       `;
 
@@ -642,7 +659,7 @@ async function loadSiteInTab(tab, input, pushHistory = true) {
   }
 
   logger.info("Loading site in tab", { tabId: tab.id, ...target });
-  
+
   // Show loading indicators
   showLoading();
   showTabLoading(tab);
@@ -698,7 +715,7 @@ async function loadSiteInTab(tab, input, pushHistory = true) {
     tab.domain = target.host;
     tab.route = target.route;
     tab.url = `${target.host}${target.route}`;
-    
+
     // Extract title from HTML (simple extraction)
     const titleMatch = fullHTML.match(/<title[^>]*>([^<]+)<\/title>/i);
     const title = titleMatch ? titleMatch[1] : target.host;
@@ -722,7 +739,7 @@ async function loadSiteInTab(tab, input, pushHistory = true) {
     // Hide loading indicators
     hideLoading();
     hideTabLoading(tab);
-    
+
     // Update UI if this is the active tab
     if (tab.id === tabManager.activeTabId) {
       urlInput.value = tab.url;
@@ -751,11 +768,11 @@ async function loadSiteInTab(tab, input, pushHistory = true) {
     });
   } catch (e) {
     logger.error("Failed to load site", e);
-    
+
     // Hide loading indicators
     hideLoading();
     hideTabLoading(tab);
-    
+
     const normalized = normalizeError(e);
     const friendlyError = getUserFriendlyError(normalized);
 
@@ -962,7 +979,7 @@ bookmarkBtn.addEventListener("click", async () => {
         createdAt: Date.now(),
         lastVisited: Date.now(),
       };
-      
+
       await bookmarks.add(bookmark);
       logger.info("Bookmark added", { url: currentUrl });
       await updateBookmarkButton(tab);
@@ -1036,10 +1053,10 @@ addBookmarkFromDropdownBtn.addEventListener("click", async () => {
       createdAt: Date.now(),
       lastVisited: Date.now(),
     };
-    
+
     await bookmarks.add(bookmark);
     logger.info("Bookmark added from dropdown", { url: currentUrl });
-    
+
     // Reload dropdown to show the new bookmark
     await loadBookmarksDropdown();
   } catch (e) {
@@ -1057,10 +1074,14 @@ manageBookmarksBtn.addEventListener("click", () => {
 // Close dropdowns when clicking outside
 document.addEventListener("click", (e) => {
   // Close menu dropdown
-  if (!menuDropdown.contains(e.target) && e.target !== menuBtn && !menuBtn.contains(e.target)) {
+  if (
+    !menuDropdown.contains(e.target) &&
+    e.target !== menuBtn &&
+    !menuBtn.contains(e.target)
+  ) {
     hideMenu();
   }
-  
+
   // Close bookmarks dropdown
   if (!bookmarksDropdown.contains(e.target)) {
     hideBookmarksDropdown();
@@ -1081,7 +1102,7 @@ document.addEventListener("keydown", (e) => {
     tabManager.createTab();
     urlInput.focus();
   }
-  
+
   // Ctrl/Cmd+W - Close tab
   if ((e.ctrlKey || e.metaKey) && e.key === "w") {
     e.preventDefault();
@@ -1090,11 +1111,13 @@ document.addEventListener("keydown", (e) => {
       tabManager.closeTab(tab.id);
     }
   }
-  
+
   // Ctrl+Tab - Next tab
   if (e.ctrlKey && e.key === "Tab" && !e.shiftKey) {
     e.preventDefault();
-    const currentIndex = tabManager.tabs.findIndex(t => t.id === tabManager.activeTabId);
+    const currentIndex = tabManager.tabs.findIndex(
+      (t) => t.id === tabManager.activeTabId
+    );
     if (currentIndex >= 0 && currentIndex < tabManager.tabs.length - 1) {
       tabManager.switchToTab(tabManager.tabs[currentIndex + 1].id);
     } else if (currentIndex === tabManager.tabs.length - 1) {
@@ -1102,11 +1125,13 @@ document.addEventListener("keydown", (e) => {
       tabManager.switchToTab(tabManager.tabs[0].id);
     }
   }
-  
+
   // Ctrl+Shift+Tab - Previous tab
   if (e.ctrlKey && e.key === "Tab" && e.shiftKey) {
     e.preventDefault();
-    const currentIndex = tabManager.tabs.findIndex(t => t.id === tabManager.activeTabId);
+    const currentIndex = tabManager.tabs.findIndex(
+      (t) => t.id === tabManager.activeTabId
+    );
     if (currentIndex > 0) {
       tabManager.switchToTab(tabManager.tabs[currentIndex - 1].id);
     } else if (currentIndex === 0) {

@@ -143,7 +143,10 @@ export class PerformanceMonitor {
     }
 
     await this._save();
-    logger.debug("Load recorded", { url: metrics.url, time: metrics.totalTime });
+    logger.debug("Load recorded", {
+      url: metrics.url,
+      time: metrics.totalTime,
+    });
   }
 
   /**
@@ -309,7 +312,10 @@ export class PerformanceMonitor {
             ? successfulMetrics.reduce((sum, m) => sum + m.queryTime, 0) /
               successfulMetrics.length
             : 0;
-        const totalEvents = metrics.reduce((sum, m) => sum + (m.eventCount || 0), 0);
+        const totalEvents = metrics.reduce(
+          (sum, m) => sum + (m.eventCount || 0),
+          0
+        );
 
         return {
           url,
@@ -500,25 +506,25 @@ export class PerformanceMonitor {
   async deleteHistoryEntry(url, host, route, dayKey) {
     await this.init();
     const before = this.loadMetrics.length;
-    
+
     // Remove all entries matching the URL, host, route, and day
-    this.loadMetrics = this.loadMetrics.filter(item => {
+    this.loadMetrics = this.loadMetrics.filter((item) => {
       // Keep if it doesn't match
       if (item.host !== host) return true;
       if (item.route !== route) return true;
       if (!item.startTime) return true;
-      
+
       // Get the day key for this item
       const itemDay = new Date(item.startTime);
       itemDay.setHours(0, 0, 0, 0);
       const itemDayKey = itemDay.getTime();
-      
+
       if (itemDayKey !== dayKey) return true;
-      
+
       // This matches - remove it
       return false;
     });
-    
+
     const deleted = before - this.loadMetrics.length;
     await this._save();
     return deleted;
@@ -527,4 +533,3 @@ export class PerformanceMonitor {
 
 // Export singleton instance
 export const performanceMonitor = new PerformanceMonitor();
-
