@@ -6,7 +6,7 @@
     <!-- Permissive CSP for sandbox - allows inline scripts, eval, and blob URLs for dynamic content -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;"
+      content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * wss: ws:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:;"
     />
     <style>
       * {

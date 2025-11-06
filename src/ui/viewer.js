@@ -278,6 +278,10 @@ function assembleHTML(bundle) {
     .map((js, i) => `<script type="module" data-nweb-js="${i}">${js}</script>`)
     .join("\n");
 
+  // Inject permissive CSP meta tag for user content
+  // This allows WebSockets, external resources, inline scripts, etc.
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * wss: ws:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:;">`;
+
   // Add navigation handler that will persist after document.write
   // Note: Firefox's sandbox.js will detect and skip if this already exists
   const navHandler = `
@@ -392,11 +396,17 @@ function assembleHTML(bundle) {
     </script>
   `;
 
-  // Inject CSS into <head>
+  // Inject CSP and CSS into <head>
   if (html.includes("</head>")) {
-    html = html.replace("</head>", `${cssInline}\n</head>`);
+    html = html.replace("</head>", `${cspMeta}\n${cssInline}\n</head>`);
   } else if (html.includes("<head>")) {
-    html = html.replace("<head>", `<head>\n${cssInline}`);
+    html = html.replace("<head>", `<head>\n${cspMeta}\n${cssInline}`);
+  } else {
+    // No head tag found, create one
+    html = html.replace(
+      /<html[^>]*>/i,
+      `$&\n<head>\n${cspMeta}\n${cssInline}\n</head>`
+    );
   }
 
   // Inject JS and navigation handler into <body>
